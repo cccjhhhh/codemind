@@ -7,8 +7,8 @@ import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
-import com.codemind.impl.tool.FileReaderTool;
-import com.codemind.impl.tool.ToolRegistry;
+import com.codemind.impl.tool.*;
+import com.codemind.impl.safety.Permission;
 import com.codemind.api.session.SessionContext;
 import com.codemind.impl.session.SessionManagerImpl;
 import picocli.CommandLine;
@@ -44,6 +44,9 @@ public class CLI implements Runnable {
     // API Key 占位符（无效的标志）
     private static final String PLACEHOLDER_KEY_PATTERN = "YOUR_.*_API_KEY";
     
+    // ToolRegistry 引用（用于权限管理）
+    private ToolRegistry toolRegistry;
+    
     @Option(names = {"-c", "--config"}, description = "配置文件路径")
     private String configPath;
     
@@ -66,8 +69,15 @@ public class CLI implements Runnable {
         ToolRegistry toolRegistry = new ToolRegistry();
         SessionManager sessionManager = new SessionManagerImpl();
         
-        // 注册默认工具
+        // 保存引用以便后续使用
+        this.toolRegistry = toolRegistry;
+        
+        // 注册所有工具
         toolRegistry.register(new FileReaderTool());
+        toolRegistry.register(new FileWriterTool());
+        toolRegistry.register(new CodeSearchTool());
+        toolRegistry.register(new CommandRunnerTool());
+        toolRegistry.register(new LogParserTool());
         
         // 创建会话
         SessionContext context = sessionManager.createSession();
@@ -122,14 +132,19 @@ public class CLI implements Runnable {
                 break;
             }
             
-            // 调用 Agent
-            AgentResult result = agentLoop.run(input, context);
-            
-            // 输出结果
+            // 调用 Agent（流式输出）
             System.out.println();
-            if (result.isSuccess()) {
-                System.out.println(result.getOutput());
-            } else {
+            AgentResult result = agentLoop.runStream(input, context, token -> {
+                // 流式输出：实时打印 token
+                System.out.print(token);
+                System.out.flush();
+            });
+            
+            // 确保换行
+            System.out.println();
+            
+            // 检查结果
+            if (!result.isSuccess()) {
                 System.out.println(RED + "错误: " + result.getError() + RESET);
             }
             System.out.println();
@@ -174,6 +189,14 @@ public class CLI implements Runnable {
                 
             case "/switch":
                 return handleSwitchCommand(modelManager, scanner);
+                
+            case "/allow":
+                handleAllowCommand(parts);
+                return null;
+                
+            case "/permissions":
+                printPermissionsStatus();
+                return null;
                 
             case "/help":
                 printHelp();
@@ -318,10 +341,82 @@ public class CLI implements Runnable {
         System.out.println();
         System.out.println("  " + CYAN + "/models" + RESET + "          列出所有可用模型");
         System.out.println("  " + CYAN + "/switch" + RESET + "          切换模型（交互式选择）");
+        System.out.println("  " + CYAN + "/allow <权限>" + RESET + "   授权危险操作（write_file, execute_command）");
+        System.out.println("  " + CYAN + "/permissions" + RESET + "     显示权限状态");
         System.out.println("  " + CYAN + "/help" + RESET + "            显示帮助");
         System.out.println("  " + DIM + "quit / exit" + RESET + "      退出程序");
         System.out.println();
         System.out.println("提示: 直接输入问题即可与 AI 对话");
+        System.out.println();
+    }
+    
+    /**
+     * 处理授权命令
+     */
+    private void handleAllowCommand(String[] parts) {
+        if (parts.length < 2) {
+            System.out.println();
+            System.out.println(YELLOW + "可授权的权限:" + RESET);
+            System.out.println("  " + CYAN + "write_file" + RESET + "      写入文件");
+            System.out.println("  " + CYAN + "execute_command" + RESET + " 执行命令");
+            System.out.println("  " + CYAN + "all" + RESET + "           授权所有危险操作");
+            System.out.println();
+            System.out.println("用法: " + CYAN + "/allow <权限>" + RESET);
+            System.out.println();
+            return;
+        }
+        
+        String permissionName = parts[1].toUpperCase();
+        
+        try {
+            if ("ALL".equals(permissionName)) {
+                // 授权所有危险操作
+                toolRegistry.grantPermission(Permission.WRITE_FILE);
+                toolRegistry.grantPermission(Permission.EXECUTE_COMMAND);
+                System.out.println();
+                System.out.println(GREEN + BOLD + "✓ 已授权所有危险操作" + RESET);
+                System.out.println();
+            } else {
+                Permission permission = Permission.valueOf(permissionName);
+                toolRegistry.grantPermission(permission);
+                System.out.println();
+                System.out.println(GREEN + BOLD + "✓ 已授权: " + permission.getDescription() + RESET);
+                System.out.println();
+            }
+        } catch (IllegalArgumentException e) {
+            System.out.println(RED + "未知的权限: " + parts[1] + RESET);
+            System.out.println("可用权限: write_file, execute_command, all");
+        }
+    }
+    
+    /**
+     * 打印权限状态
+     */
+    private void printPermissionsStatus() {
+        System.out.println();
+        System.out.println(BOLD + "权限状态:" + RESET);
+        System.out.println();
+        
+        Permission[] permissions = Permission.values();
+        for (Permission perm : permissions) {
+            boolean needsConfirm = toolRegistry.getPermissionGate().requiresConfirmation(perm);
+            boolean hasPermission = toolRegistry.getPermissionGate().hasPermission(perm);
+            
+            String status;
+            if (hasPermission) {
+                status = GREEN + "✓ 已授权" + RESET;
+            } else if (needsConfirm) {
+                status = YELLOW + "⚠ 需授权" + RESET;
+            } else {
+                status = DIM + "○ 默认允许" + RESET;
+            }
+            
+            System.out.println("  " + perm.name() + RESET + " " + 
+                               DIM + "(" + perm.getDescription() + ")" + RESET + 
+                               " " + status);
+        }
+        System.out.println();
+        System.out.println(DIM + "提示: 使用 /allow <权限> 授权危险操作" + RESET);
         System.out.println();
     }
 }
