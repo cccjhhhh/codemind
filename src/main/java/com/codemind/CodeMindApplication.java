@@ -1,6 +1,7 @@
 package com.codemind;
 
 import com.codemind.cli.CLI;
+import picocli.CommandLine;
 
 /**
  * CodeMind - 智能编程助手
@@ -10,8 +11,7 @@ import com.codemind.cli.CLI;
 public class CodeMindApplication {
     
     public static void main(String[] args) {
-        CLI cli = new CLI();
-        int exitCode = cli.execute(args);
+        int exitCode = new CommandLine(new CLI()).execute(args);
         System.exit(exitCode);
     }
 }
