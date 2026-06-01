@@ -1,7 +1,10 @@
 package com.codemind.api.llm;
 
+import java.util.List;
+import java.util.ArrayList;
+
 /**
- * LLM 消息
+ * 消息
  */
 public class Message {
     
@@ -12,18 +15,33 @@ public class Message {
     private final Role role;
     private final String content;
     private final String toolCallId;
+    private final List<ToolCall> toolCalls;
     
+    // 基础构造器
     public Message(Role role, String content) {
         this.role = role;
         this.content = content;
         this.toolCallId = null;
+        this.toolCalls = null;
     }
     
+    // TOOL 角色构造器
     public Message(Role role, String content, String toolCallId) {
         this.role = role;
         this.content = content;
         this.toolCallId = toolCallId;
+        this.toolCalls = null;
     }
+    
+    // ASSISTANT 角色带 tool_calls 构造器
+    public Message(Role role, String content, List<ToolCall> toolCalls) {
+        this.role = role;
+        this.content = content;
+        this.toolCallId = null;
+        this.toolCalls = toolCalls;
+    }
+    
+    // ========== 静态工厂方法 ==========
     
     public static Message system(String content) {
         return new Message(Role.SYSTEM, content);
@@ -37,12 +55,19 @@ public class Message {
         return new Message(Role.ASSISTANT, content);
     }
     
+    public static Message assistantWithTools(String content, List<ToolCall> toolCalls) {
+        return new Message(Role.ASSISTANT, content, toolCalls);
+    }
+    
     public static Message tool(String content, String toolCallId) {
         return new Message(Role.TOOL, content, toolCallId);
     }
     
-    // Getters
+    // ========== Getter 方法 ==========
+    
     public Role getRole() { return role; }
     public String getContent() { return content; }
     public String getToolCallId() { return toolCallId; }
+    public List<ToolCall> getToolCalls() { return toolCalls; }
+    public boolean hasToolCalls() { return toolCalls != null && !toolCalls.isEmpty(); }
 }
