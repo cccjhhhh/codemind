@@ -10,6 +10,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * OpenAI LLM 客户端实现
@@ -18,10 +21,11 @@ import java.util.Map;
  * - HTTP API 调用封装
  * - JSON 请求/响应处理
  * - 流式响应处理（Server-Sent Events）
+ * - 工具调用的增量解析
  */
 public class OpenAIClient implements LLMClient {
     
-    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final ObjectMapper MAPPER = new ObjectMapper();
     
     private final OkHttpClient httpClient;
@@ -41,42 +45,260 @@ public class OpenAIClient implements LLMClient {
         this.model = model;
         this.maxTokens = maxTokens;
         this.temperature = temperature;
-        this.httpClient = new OkHttpClient.Builder().build();
+        this.httpClient = new OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
     }
     
     @Override
     public LLMResponse chat(List<Message> messages) {
         try {
-            // 1. 构建请求体
             String messagesJson = buildMessagesJson(messages);
-            RequestBody body = buildRequestBody(messagesJson, null);
+            RequestBody body = buildRequestBody(messagesJson, null, false);
             
-            // 2. 创建 HTTP 请求
             Request request = new Request.Builder()
                 .url(baseUrl + "/chat/completions")
                 .addHeader("Authorization", "Bearer " + apiKey)
                 .post(body)
                 .build();
             
-            // 3. 发送请求并获取响应
             try (Response response = httpClient.newCall(request).execute()) {
                 if (!response.isSuccessful()) {
                     String errorBody = response.body() != null ? response.body().string() : "Unknown error";
                     throw new IOException("API 请求失败: " + response.code() + " - " + errorBody);
                 }
-                
-                // 4. 解析响应
-                String responseBody = response.body().string();
-                return parseResponse(responseBody);
+                return parseResponse(response.body().string());
             }
-            
         } catch (Exception e) {
             throw new RuntimeException("调用 LLM API 失败", e);
         }
     }
     
+    @Override
+    public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
+        try {
+            String messagesJson = buildMessagesJson(messages);
+            RequestBody body = buildRequestBody(messagesJson, tools, false);
+            
+            Request request = new Request.Builder()
+                .url(baseUrl + "/chat/completions")
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .post(body)
+                .build();
+            
+            try (Response response = httpClient.newCall(request).execute()) {
+                if (!response.isSuccessful()) {
+                    String errorBody = response.body() != null ? response.body().string() : "Unknown error";
+                    throw new IOException("API 请求失败: " + response.code() + " - " + errorBody);
+                }
+                return parseResponse(response.body().string());
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("调用 LLM API (with tools) 失败", e);
+        }
+    }
+    
+    @Override
+    public void chatStream(List<Message> messages, StreamHandler handler) {
+        chatStreamWithTools(messages, null, handler);
+    }
+    
+    @Override
+    public void chatStreamWithTools(List<Message> messages, List<ToolDefinition> tools, 
+                                     StreamHandler handler) {
+        try {
+            String messagesJson = buildMessagesJson(messages);
+            RequestBody body = buildRequestBody(messagesJson, tools, true);
+            
+            Request request = new Request.Builder()
+                .url(baseUrl + "/chat/completions")
+                .addHeader("Authorization", "Bearer " + apiKey)
+                .addHeader("Accept", "text/event-stream")
+                .post(body)
+                .build();
+            
+            httpClient.newCall(request).enqueue(new Callback() {
+                
+                @Override
+                public void onFailure(Call call, IOException e) {
+                    handler.onEvent(StreamEvent.error(e));
+                    handler.onError(e);
+                }
+                
+                @Override
+                public void onResponse(Call call, Response response) throws IOException {
+                    if (!response.isSuccessful()) {
+                        IOException e = new IOException("API 请求失败: " + response.code());
+                        handler.onEvent(StreamEvent.error(e));
+                        handler.onError(e);
+                        return;
+                    }
+                    
+                    try (ResponseBody body = response.body()) {
+                        if (body == null) {
+                            handler.onEvent(StreamEvent.error(new IOException("空响应体")));
+                            return;
+                        }
+                        
+                        // 状态收集器
+                        StringBuilder fullText = new StringBuilder();
+                        List<ToolCall> toolCalls = new ArrayList<>();
+                        Map<Integer, StringBuilder> toolArgsBuffers = new ConcurrentHashMap<>();
+                        Map<Integer, String> toolIds = new ConcurrentHashMap<>();
+                        Map<Integer, String> toolNames = new ConcurrentHashMap<>();
+                        int totalTokens = 0;
+                        
+                        var source = body.source();
+                        
+                        while (true) {
+                            String line = source.readUtf8Line();
+                            if (line == null) break;
+                            
+                            line = line.trim();
+                            if (line.isEmpty()) continue;
+                            
+                            // SSE 格式: data: {...}
+                            if (line.startsWith("data: ")) {
+                                String json = line.substring(6);
+                                
+                                if ("[DONE]".equals(json)) {
+                                    // 流结束，发送 MESSAGE_COMPLETE
+                                    StreamEvent complete = StreamEvent.messageComplete(
+                                        fullText.toString(), 
+                                        toolCalls, 
+                                        totalTokens
+                                    );
+                                    handler.onEvent(complete);
+                                    handler.onComplete(fullText.toString());
+                                    return;
+                                }
+                                
+                                // 解析事件
+                                try {
+                                    JsonNode root = MAPPER.readTree(json);
+                                    JsonNode choices = root.path("choices");
+                                    
+                                    if (choices.isArray() && !choices.isEmpty()) {
+                                        JsonNode choice = choices.get(0);
+                                        JsonNode delta = choice.path("delta");
+                                        
+                                        // 1. 处理文本增量
+                                        JsonNode contentNode = delta.get("content");
+                                        if (contentNode != null && !contentNode.isNull()) {
+                                            String text = contentNode.asText();
+                                            if (text != null && !text.isEmpty()) {
+                                                fullText.append(text);
+                                                handler.onEvent(StreamEvent.textDelta(text));
+                                            }
+                                        }
+                                        
+                                        // 2. 处理工具调用增量
+                                        JsonNode toolCallsDelta = delta.path("tool_calls");
+                                        if (toolCallsDelta.isArray()) {
+                                            for (JsonNode tc : toolCallsDelta) {
+                                                int index = tc.path("index").asInt();
+                                                
+                                                // 工具调用开始
+                                                if (tc.has("id")) {
+                                                    String id = tc.path("id").asText();
+                                                    String name = tc.path("function").path("name").asText();
+                                                    
+                                                    toolIds.put(index, id);
+                                                    toolNames.put(index, name);
+                                                    toolArgsBuffers.put(index, new StringBuilder());
+                                                    
+                                                    handler.onEvent(StreamEvent.toolCallStart(index, id, name));
+                                                }
+                                                
+                                                // 工具参数增量
+                                                JsonNode funcDelta = tc.path("function");
+                                                if (funcDelta.has("arguments")) {
+                                                    String argsChunk = funcDelta.path("arguments").asText();
+                                                    if (argsChunk != null && !argsChunk.isEmpty()) {
+                                                        toolArgsBuffers.get(index).append(argsChunk);
+                                                        handler.onEvent(StreamEvent.toolCallDelta(index, argsChunk));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        // 3. 检查 finish_reason
+                                        String finishReason = choice.path("finish_reason").asText(null);
+                                        if (finishReason != null && !finishReason.isEmpty()) {
+                                            // finish_reason 有值，表示这一轮对话结束
+                                            
+                                            // 如果是工具调用，构建完整的 ToolCall 列表
+                                            if ("tool_calls".equals(finishReason)) {
+                                                for (Map.Entry<Integer, StringBuilder> entry : toolArgsBuffers.entrySet()) {
+                                                    int index = entry.getKey();
+                                                    String id = toolIds.get(index);
+                                                    String name = toolNames.get(index);
+                                                    String argsJson = entry.getValue().toString();
+                                                    
+                                                    Map<String, Object> args = parseJsonArgs(argsJson);
+                                                    
+                                                    ToolCall toolCall = new ToolCall(id, name, args);
+                                                    toolCalls.add(toolCall);
+                                                    
+                                                    handler.onEvent(StreamEvent.toolCallComplete(index, id, name, args));
+                                                }
+                                            }
+                                            
+                                            // 发送 MESSAGE_COMPLETE 事件
+                                            StreamEvent complete = StreamEvent.messageComplete(
+                                                fullText.toString(), toolCalls, totalTokens
+                                            );
+                                            handler.onEvent(complete);
+                                            handler.onComplete(fullText.toString());
+                                            return;
+                                        }
+                                        
+                                        // 4. 处理 token 使用量
+                                        JsonNode usage = root.path("usage");
+                                        if (usage.has("total_tokens")) {
+                                            totalTokens = usage.path("total_tokens").asInt();
+                                        }
+                                    }
+                                } catch (Exception parseError) {
+                                    // 忽略解析错误，继续处理
+                                }
+                            }
+                        }
+                        
+                        // 流正常结束
+                        StreamEvent complete = StreamEvent.messageComplete(
+                            fullText.toString(), toolCalls, totalTokens
+                        );
+                        handler.onEvent(complete);
+                        handler.onComplete(fullText.toString());
+                    }
+                }
+            });
+            
+        } catch (Exception e) {
+            handler.onEvent(StreamEvent.error(e));
+            handler.onError(e);
+        }
+    }
+    
     /**
-     * 解析 OpenAI API 响应
+     * 解析 JSON 参数
+     */
+    private Map<String, Object> parseJsonArgs(String json) {
+        if (json == null || json.isEmpty()) {
+            return new HashMap<>();
+        }
+        try {
+            return MAPPER.readValue(json, 
+                new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            return new HashMap<>();
+        }
+    }
+    
+    /**
+     * 解析同步响应
      */
     private LLMResponse parseResponse(String responseBody) throws Exception {
         JsonNode root = MAPPER.readTree(responseBody);
@@ -91,24 +313,17 @@ public class OpenAIClient implements LLMClient {
         
         String content = message.path("content").asText("");
         boolean finished = "stop".equals(firstChoice.path("finish_reason").asText());
-        
-        // 解析 token 使用量
         int tokensUsed = root.path("usage").path("total_tokens").asInt(0);
         
-        // 解析工具调用（如果有）
         List<ToolCall> toolCalls = null;
         JsonNode toolCallsNode = message.path("tool_calls");
         if (toolCallsNode.isArray() && !toolCallsNode.isEmpty()) {
-            toolCalls = new java.util.ArrayList<>();
+            toolCalls = new ArrayList<>();
             for (JsonNode tc : toolCallsNode) {
                 String id = tc.path("id").asText();
                 String name = tc.path("function").path("name").asText();
                 String argsJson = tc.path("function").path("arguments").asText();
-                
-                // 解析参数 JSON
-                Map<String, Object> args = MAPPER.readValue(argsJson, 
-                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
-                
+                Map<String, Object> args = parseJsonArgs(argsJson);
                 toolCalls.add(new ToolCall(id, name, args));
             }
         }
@@ -117,171 +332,64 @@ public class OpenAIClient implements LLMClient {
     }
     
     /**
-     * 构建请求体（支持 Function Calling）
+     * 构建请求体
      */
-    private RequestBody buildRequestBody(String messagesJson, List<ToolDefinition> tools) throws Exception {
+    private RequestBody buildRequestBody(String messagesJson, List<ToolDefinition> tools, 
+                                          boolean stream) throws Exception {
         ObjectNode body = MAPPER.createObjectNode();
         body.put("model", model);
         body.put("max_tokens", maxTokens);
         body.put("temperature", temperature);
+        body.put("stream", stream);
         body.set("messages", MAPPER.readTree(messagesJson));
-
+        
         if (tools != null && !tools.isEmpty()) {
             ArrayNode toolsArray = body.putArray("tools");
             for (ToolDefinition tool : tools) {
                 toolsArray.add(toolToJson(tool));
             }
         }
-
-        return RequestBody.create(body.toString(), JSON);
+        
+        return RequestBody.create(body.toString(), JSON_TYPE);
     }
-
+    
     /**
-     * 将消息列表转换为 JSON 数组
+     * 构建消息 JSON
      */
     private String buildMessagesJson(List<Message> messages) throws Exception {
         ArrayNode array = MAPPER.createArrayNode();
         for (Message msg : messages) {
             ObjectNode node = array.addObject();
             node.put("role", msg.getRole().name().toLowerCase());
-            node.put("content", msg.getContent());
+            
+            // TOOL 角色需要 tool_call_id 字段
+            if (msg.getRole() == Message.Role.TOOL) {
+                node.put("tool_call_id", msg.getToolCallId());
+            }
+            
+            // ASSISTANT 角色可能有 tool_calls
+            if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
+                ArrayNode toolCallsArray = node.putArray("tool_calls");
+                for (ToolCall tc : msg.getToolCalls()) {
+                    ObjectNode tcNode = toolCallsArray.addObject();
+                    tcNode.put("id", tc.getId());
+                    tcNode.put("type", "function");
+                    ObjectNode funcNode = tcNode.putObject("function");
+                    funcNode.put("name", tc.getName());
+                    funcNode.put("arguments", MAPPER.writeValueAsString(tc.getArguments()));
+                }
+            }
+            
+            // content 字段（可能为空）
+            if (msg.getContent() != null && !msg.getContent().isEmpty()) {
+                node.put("content", msg.getContent());
+            }
         }
         return MAPPER.writeValueAsString(array);
     }
     
-    @Override
-    public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
-        try {
-            // 1. 构建请求体（带工具定义）
-            String messagesJson = buildMessagesJson(messages);
-            RequestBody body = buildRequestBody(messagesJson, tools);
-            
-            // 2. 创建 HTTP 请求
-            Request request = new Request.Builder()
-                .url(baseUrl + "/chat/completions")
-                .addHeader("Authorization", "Bearer " + apiKey)
-                .post(body)
-                .build();
-            
-            // 3. 发送请求并获取响应
-            try (Response response = httpClient.newCall(request).execute()) {
-                if (!response.isSuccessful()) {
-                    String errorBody = response.body() != null ? response.body().string() : "Unknown error";
-                    throw new IOException("API 请求失败: " + response.code() + " - " + errorBody);
-                }
-                
-                // 4. 解析响应（与 chat() 相同）
-                String responseBody = response.body().string();
-                return parseResponse(responseBody);
-            }
-            
-        } catch (Exception e) {
-            throw new RuntimeException("调用 LLM API (with tools) 失败", e);
-        }
-    }
-    
     /**
-     * 流式调用 LLM（SSE - Server-Sent Events）
-     * 
-     * 学习要点：
-     * - Server-Sent Events (SSE) 协议
-     * - 流式数据处理
-     * - 增量响应渲染
-     */
-    @Override
-    public void chatStream(List<Message> messages, StreamHandler handler) {
-        try {
-            // 1. 构建请求体
-            String messagesJson = buildMessagesJson(messages);
-            RequestBody body = buildRequestBody(messagesJson, null);
-            
-            // 2. 创建 HTTP 请求（GET 改为流式 POST）
-            Request request = new Request.Builder()
-                .url(baseUrl + "/chat/completions")
-                .addHeader("Authorization", "Bearer " + apiKey)
-                .addHeader("Accept", "text/event-stream")
-                .post(body)
-                .build();
-            
-            // 3. 发送请求
-            httpClient.newCall(request).enqueue(new Callback() {
-                private final StringBuilder fullResponse = new StringBuilder();
-                
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    handler.onError(e);
-                }
-                
-                @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    if (!response.isSuccessful()) {
-                        handler.onError(new IOException("API 请求失败: " + response.code()));
-                        return;
-                    }
-                    
-                    try (var bodyStream = response.body()) {
-                        if (bodyStream == null) {
-                            handler.onError(new IOException("空响应体"));
-                            return;
-                        }
-                        
-                        // 使用 BufferedSource 读取流
-                        var source = bodyStream.source();
-                        
-                        // 读取所有数据
-                        while (true) {
-                            // 尝试读取一行（SSE 格式）
-                            String line = source.readUtf8Line();
-                            if (line == null) {
-                                // 流结束
-                                break;
-                            }
-                            
-                            // 解析 SSE 格式: data: {...}
-                            if (line.startsWith("data: ")) {
-                                String json = line.substring(6);
-                                if ("[DONE]".equals(json)) {
-                                    handler.onComplete(fullResponse.toString());
-                                    return;
-                                }
-                                
-                                // 解析并提取增量内容
-                                String token = extractDeltaToken(json);
-                                if (token != null) {
-                                    fullResponse.append(token);
-                                    handler.onToken(token);
-                                }
-                            }
-                        }
-                        
-                        handler.onComplete(fullResponse.toString());
-                    }
-                }
-                
-                /**
-                 * 从 SSE data 中提取增量 token
-                 */
-                private String extractDeltaToken(String json) {
-                    try {
-                        JsonNode node = MAPPER.readTree(json);
-                        JsonNode choices = node.path("choices");
-                        if (choices.isArray() && !choices.isEmpty()) {
-                            return choices.get(0).path("delta").path("content").asText(null);
-                        }
-                    } catch (Exception e) {
-                        // 忽略解析错误
-                    }
-                    return null;
-                }
-            });
-            
-        } catch (Exception e) {
-            handler.onError(e);
-        }
-    }
-    
-    /**
-     * 将工具定义转换为 OpenAI 格式
+     * 工具定义转 JSON
      */
     private JsonNode toolToJson(ToolDefinition tool) {
         ObjectNode node = MAPPER.createObjectNode();
