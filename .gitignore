@@ -32,3 +32,12 @@ out/
 # Temporary
 *.tmp
 *.temp
+
+# Agent runtime state
+.sisyphus/
+
+# Learning progress (personal notes)
+docs/learning-progress.md
+
+# OpenCode state
+.git/opencode
