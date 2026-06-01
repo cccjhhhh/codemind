@@ -1,0 +1,34 @@
+# Compiled
+target/
+*.class
+*.jar
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Config (sensitive)
+application-local.yml
+config.local.yml
+.codemind/config.yml
+
+# Build
+.gradle/
+build/
+out/
+
+# Temporary
+*.tmp
+*.temp
