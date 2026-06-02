@@ -1,27 +1,20 @@
 package com.codemind.cli;
 
+import com.codemind.api.cli.OutputFormatter;
 import com.codemind.api.llm.LLMClient;
 import com.codemind.api.llm.ModelConfig;
-import com.codemind.api.session.SessionManager;
-import com.codemind.core.AgentLoop;
-import com.codemind.core.AgentResult;
-import com.codemind.impl.llm.ModelFactory;
-import com.codemind.impl.llm.ModelManager;
-import com.codemind.impl.tool.ToolRegistryImpl;
-import com.codemind.impl.tool.FileReaderTool;
-import com.codemind.impl.tool.FileWriterTool;
-import com.codemind.impl.tool.CodeSearchTool;
-import com.codemind.impl.tool.CommandRunnerTool;
-import com.codemind.impl.tool.LogParserTool;
 import com.codemind.api.safety.Permission;
 import com.codemind.api.safety.PermissionDecision;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
-import com.codemind.api.cli.OutputFormatter;
-import com.codemind.impl.session.SessionManagerImpl;
-import com.codemind.impl.cli.AnsiStyles;
+import com.codemind.api.session.SessionManager;
+import com.codemind.core.AgentLoop;
+import com.codemind.core.AgentResult;
 import com.codemind.impl.cli.DefaultOutputFormatter;
-import com.codemind.impl.safety.PermissionGate;
+import com.codemind.impl.llm.ModelFactory;
+import com.codemind.impl.llm.ModelManager;
+import com.codemind.impl.session.SessionManagerImpl;
+import com.codemind.impl.tool.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -416,7 +409,7 @@ public class CLI implements Runnable {
         
         Permission[] permissions = Permission.values();
         for (Permission perm : permissions) {
-            boolean needsConfirm = toolRegistry.getPermissionGate().requiresConfirmation(perm);
+            boolean needsConfirm = toolRegistry.getPermissionGate().needsConfirmation(perm);
             boolean hasPermission = toolRegistry.getPermissionGate().hasPermission(perm);
             
             String status;
