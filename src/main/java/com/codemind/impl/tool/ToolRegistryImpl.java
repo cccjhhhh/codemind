@@ -3,18 +3,19 @@ package com.codemind.impl.tool;
 import com.codemind.api.llm.ToolDefinition;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.safety.Permission;
+import com.codemind.api.tool.ToolRegistry;
+import com.codemind.api.safety.Permission;
 import com.codemind.impl.safety.PermissionGate;
 
 import java.util.*;
 
 /**
- * 工具注册中心
+ * 工具注册中心实现
  * 
  * 管理所有可用工具的定义和执行。
  * 学习要点：工具注册与发现、参数验证、执行调度、权限控制
  */
-public class ToolRegistry {
+public class ToolRegistryImpl implements ToolRegistry {
     
     /** 工具名称到权限的映射 */
     private static final Map<String, Permission> TOOL_PERMISSIONS = Map.of(
@@ -28,24 +29,30 @@ public class ToolRegistry {
     private final Map<String, Tool> tools = new HashMap<>();
     private final PermissionGate permissionGate;
     
-    public ToolRegistry() {
+    public ToolRegistryImpl() {
         this.permissionGate = new PermissionGate(true); // 默认需要确认危险操作
     }
     
-    public ToolRegistry(PermissionGate permissionGate) {
+    public ToolRegistryImpl(PermissionGate permissionGate) {
         this.permissionGate = permissionGate;
     }
     
-    /**
-     * 注册工具
-     */
+    @Override
     public void register(Tool tool) {
         tools.put(tool.getName(), tool);
     }
     
-    /**
-     * 获取工具定义（用于 LLM Function Calling）
-     */
+    @Override
+    public void unregister(String name) {
+        tools.remove(name);
+    }
+    
+    @Override
+    public Tool get(String name) {
+        return tools.get(name);
+    }
+    
+    @Override
     public ToolDefinition getDefinition(String name) {
         Tool tool = tools.get(name);
         if (tool == null) {
@@ -58,32 +65,24 @@ public class ToolRegistry {
         );
     }
     
-    /**
-     * 获取所有工具定义
-     */
+    @Override
     public List<ToolDefinition> getAllDefinitions() {
         return tools.values().stream()
             .map(t -> new ToolDefinition(t.getName(), t.getDescription(), t.getInputSchema()))
             .toList();
     }
     
-    /**
-     * 执行工具（带权限检查）
-     * 
-     * @return 如果权限不足，返回失败结果（不执行）
-     */
+@Override
     public ToolResult execute(String name, Map<String, Object> params) {
         Tool tool = tools.get(name);
         if (tool == null) {
             return ToolResult.failure("Tool not found: " + name);
         }
         
-        // 检查权限
+        // 检查是否需要权限确认
         Permission permission = TOOL_PERMISSIONS.get(name);
-        if (permission != null && !permissionGate.hasPermission(permission)) {
-            return ToolResult.failure(
-                "权限不足: " + permission.getDescription() + "，请在设置中授权"
-            );
+        if (permission != null && permissionGate.needsConfirmation(permission)) {
+            return ToolResult.needsConfirmation(permission, "工具: " + name);
         }
         
         try {
@@ -91,6 +90,11 @@ public class ToolRegistry {
         } catch (Exception e) {
             return ToolResult.failure("Tool execution failed: " + e.getMessage());
         }
+    }
+    
+    @Override
+    public boolean hasTool(String name) {
+        return tools.containsKey(name);
     }
     
     /**
@@ -130,13 +134,6 @@ public class ToolRegistry {
      */
     public Permission getToolPermission(String toolName) {
         return TOOL_PERMISSIONS.get(toolName);
-    }
-    
-    /**
-     * 检查工具是否存在
-     */
-    public boolean hasTool(String name) {
-        return tools.containsKey(name);
     }
     
     /**

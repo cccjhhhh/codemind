@@ -3,7 +3,7 @@ package com.codemind.impl.skill;
 import com.codemind.api.skill.Skill;
 import com.codemind.api.skill.SkillContext;
 import com.codemind.api.skill.SkillResult;
-import com.codemind.impl.tool.ToolRegistry;
+import com.codemind.api.tool.ToolRegistry;
 
 /**
  * 代码审查技能

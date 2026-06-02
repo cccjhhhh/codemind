@@ -3,40 +3,40 @@ package com.codemind.impl.skill;
 import com.codemind.api.skill.Skill;
 import com.codemind.api.skill.SkillContext;
 import com.codemind.api.skill.SkillResult;
-import com.codemind.impl.tool.ToolRegistry;
-import java.util.Map;
+import com.codemind.api.skill.SkillRegistry;
+import com.codemind.impl.tool.ToolRegistryImpl;
+import java.util.List;
 
 /**
- * 技能注册中心
+ * 技能注册中心实现
  * 
  * 管理所有可用技能的定义和执行
  */
-public class SkillRegistry {
+public class SkillRegistryImpl implements SkillRegistry {
     
-    private final ToolRegistry toolRegistry;
-    private final Map<String, Skill> skills = new java.util.HashMap<>();
+    private final ToolRegistryImpl toolRegistry;
+    private final java.util.Map<String, Skill> skills = new java.util.HashMap<>();
     
-    public SkillRegistry(ToolRegistry toolRegistry) {
+    public SkillRegistryImpl(ToolRegistryImpl toolRegistry) {
         this.toolRegistry = toolRegistry;
     }
     
-    /**
-     * 注册技能
-     */
+    @Override
     public void register(Skill skill) {
         skills.put(skill.getName(), skill);
     }
     
-    /**
-     * 获取技能
-     */
+    @Override
+    public void unregister(String name) {
+        skills.remove(name);
+    }
+    
+    @Override
     public Skill get(String name) {
         return skills.get(name);
     }
     
-    /**
-     * 执行技能
-     */
+    @Override
     public SkillResult execute(String name, SkillContext context) {
         Skill skill = skills.get(name);
         if (skill == null) {
@@ -49,8 +49,18 @@ public class SkillRegistry {
         }
     }
     
+    @Override
+    public List<String> getAllNames() {
+        return java.util.Collections.unmodifiableSet(skills.keySet()).stream().toList();
+    }
+    
+    @Override
+    public boolean hasSkill(String name) {
+        return skills.containsKey(name);
+    }
+    
     /**
-     * 获取所有技能名称
+     * 获取所有技能名称（兼容旧API）
      */
     public java.util.Set<String> getSkillNames() {
         return java.util.Collections.unmodifiableSet(skills.keySet());
