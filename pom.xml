@@ -104,6 +104,14 @@
             <version>${mockito.version}</version>
             <scope>test</scope>
         </dependency>
+
+        <!-- Architecture Testing -->
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>1.2.1</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
@@ -148,6 +156,27 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.3</version>
+            </plugin>
+
+            <!-- Checkstyle - Code Quality -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+                <version>3.3.1</version>
+                <configuration>
+                    <configLocation>config/checkstyle.xml</configLocation>
+                    <failOnViolation>false</failOnViolation>
+                    <consoleOutput>true</consoleOutput>
+                    <outputFile>${project.build.directory}/checkstyle-result.xml</outputFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -123,3 +123,63 @@ class SomeTest {
 - Agent 核心概念映射
 - 分阶段开发计划
 - 未来扩展方向
+
+---
+
+## AI 编码行为准则
+
+> 本节为 AI 辅助编码提供行为指引，确保生成的代码遵循项目规范和主流实践。
+
+### 编码前必读
+
+1. **阅读设计文档**：`docs/superpowers/specs/2026-06-01-codemind-design.md`
+2. **理解模块位置**：确认要实现的功能在整体架构中的位置
+3. **参考主流设计**：了解 LangChain、Claude Code 等主流 Agent 框架如何实现类似功能
+
+### 分层规范
+
+| 层级 | 职责 | 允许依赖 |
+|------|------|----------|
+| `api/` | 接口定义、契约 | 无内部依赖 |
+| `impl/` | 接口实现 | api/, 外部依赖 |
+| `core/` | 核心引擎 | api/, 外部依赖 |
+| `cli/` | 命令行入口 | core/, api/ |
+
+**禁止**：
+- api → impl（接口依赖实现）
+- core → impl（核心依赖实现）
+
+### 编码规范
+
+1. **命名**：类名 PascalCase，方法名 camelCase
+2. **接口优先**：变量使用接口类型声明
+3. **构造器注入**：依赖通过构造函数注入
+4. **中文注释**：解释"为什么"而非"是什么"
+
+### 参考主流实现
+
+| 实现内容 | 参考来源 |
+|----------|----------|
+| AgentLoop | LangChain AgentExecutor |
+| Tool | LangChain Tool 抽象 |
+| PermissionGate | Claude Code 权限模型 |
+| Memory | Cursor 上下文管理 |
+
+### 检查命令
+
+```bash
+# 检查代码风格
+mvn checkstyle:check
+
+# 运行架构测试
+mvn test -Dtest=ArchitectureTest
+
+# 完整构建
+mvn clean package
+```
+
+### 不要闭门造车
+
+- 遇到设计问题，先搜索主流解决方案
+- 有多种实现方式时，选择与主流框架一致的方式
+- 创新设计需要先与用户商量
