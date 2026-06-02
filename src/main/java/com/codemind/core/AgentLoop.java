@@ -1,14 +1,19 @@
 package com.codemind.core;
 
 import com.codemind.api.llm.*;
+import com.codemind.api.safety.Permission;
+import com.codemind.api.safety.PermissionDecision;
+import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
+import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.tool.ToolRegistry;
+import com.codemind.impl.safety.PermissionGate;
 
-import java.util.List;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 /**
  * Agent 循环引擎
@@ -18,7 +23,7 @@ import java.util.concurrent.atomic.AtomicReference;
  * 
  * 循环流程：
  * 1. 思考 (Think)：将用户输入和上下文发送给 LLM（流式）
- * 2. 行动 (Act)：如果 LLM 请求工具调用，则执行工具
+ * 2. 行动 (Act)：如果 LLM 请求工具调用，则执行工具（支持权限确认）
  * 3. 观察 (Observe)：将工具执行结果反馈给 LLM
  * 4. 重复直到 LLM 返回最终回答
  */
@@ -26,24 +31,28 @@ public class AgentLoop {
     
     private final LLMClient llmClient;
     private final ToolRegistry toolRegistry;
+    private final PermissionGate permissionGate;
     private final int maxIterations;
     
-    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry, int maxIterations) {
+    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry, 
+                     PermissionGate permissionGate, int maxIterations) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
+        this.permissionGate = permissionGate;
         this.maxIterations = maxIterations;
     }
     
     /**
-     * 运行 Agent 循环（流式输出）
+     * 运行 Agent 循环（流式输出，带权限确认）
      * 
      * @param input 用户输入
      * @param context 会话上下文
      * @param outputHandler 输出处理器（实时接收文本 token）
+     * @param prompter 权限确认处理器
      * @return 执行结果
      */
     public AgentResult runStream(String input, SessionContext context, 
-                                  java.util.function.Consumer<String> outputHandler) {
+                                  Consumer<String> outputHandler, PermissionPrompter prompter) {
         try {
             // 1. 将用户输入添加到上下文
             context.addMessage(Message.user(input));
@@ -75,6 +84,31 @@ public class AgentLoop {
                             toolCall.getArguments()
                         );
                         
+                        // 处理权限确认
+                        if (result.needsConfirmation()) {
+                            Permission permission = result.getRequiredPermission();
+                            String ctx = "工具: " + toolCall.getName();
+                            
+                            // 调用 prompter 询问用户
+                            PermissionDecision decision = prompter.prompt(permission, ctx);
+                            
+                            switch (decision) {
+                                case ALLOW:
+                                    // 重新执行
+                                    result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+                                    break;
+                                case ALLOW_SESSION:
+                                    // 标记会话权限后重新执行
+                                    permissionGate.grantSessionPermission(permission);
+                                    result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+                                    break;
+                                case DENY:
+                                default:
+                                    result = ToolResult.failure("用户拒绝授权: " + permission.getDescription());
+                                    break;
+                            }
+                        }
+                        
                         // 将工具结果添加到历史
                         String resultContent = result.isSuccess() 
                             ? result.getOutput() 
@@ -98,6 +132,16 @@ public class AgentLoop {
     }
     
     /**
+     * 运行 Agent 循环（流式输出，无权限确认）
+     * 向后兼容
+     */
+    public AgentResult runStream(String input, SessionContext context, 
+                                  Consumer<String> outputHandler) {
+        // 使用一个默认的 PermissionPrompter，总是拒绝危险操作
+        return runStream(input, context, outputHandler, (permission, ctx) -> PermissionDecision.DENY);
+    }
+    
+    /**
      * 运行 Agent 循环（同步，无流式输出）
      * 保留向后兼容
      */
@@ -109,7 +153,7 @@ public class AgentLoop {
      * 执行单轮 LLM 调用（流式）
      */
     private AgentTurnResult runSingleTurn(List<Message> history, List<ToolDefinition> tools,
-                                           java.util.function.Consumer<String> outputHandler) {
+                                           Consumer<String> outputHandler) {
         
         // 用于同步等待
         CountDownLatch latch = new CountDownLatch(1);

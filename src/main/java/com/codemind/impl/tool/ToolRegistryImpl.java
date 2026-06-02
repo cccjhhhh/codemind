@@ -1,10 +1,10 @@
 package com.codemind.impl.tool;
 
 import com.codemind.api.llm.ToolDefinition;
-import com.codemind.api.tool.Tool;
-import com.codemind.api.tool.ToolResult;
-import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.safety.Permission;
+import com.codemind.api.tool.Tool;
+import com.codemind.api.tool.ToolRegistry;
+import com.codemind.api.tool.ToolResult;
 import com.codemind.impl.safety.PermissionGate;
 
 import java.util.*;
@@ -72,7 +72,7 @@ public class ToolRegistryImpl implements ToolRegistry {
             .toList();
     }
     
-@Override
+    @Override
     public ToolResult execute(String name, Map<String, Object> params) {
         Tool tool = tools.get(name);
         if (tool == null) {
@@ -82,7 +82,7 @@ public class ToolRegistryImpl implements ToolRegistry {
         // 检查是否需要权限确认
         Permission permission = TOOL_PERMISSIONS.get(name);
         if (permission != null && permissionGate.needsConfirmation(permission)) {
-            return ToolResult.needsConfirmation(permission, "工具: " + name);
+            return ToolResult.needsConfirmation(permission);
         }
         
         try {
@@ -105,7 +105,7 @@ public class ToolRegistryImpl implements ToolRegistry {
         if (permission == null) {
             return false;
         }
-        return permissionGate.requiresConfirmation(permission);
+        return permissionGate.needsConfirmation(permission);
     }
     
     /**
