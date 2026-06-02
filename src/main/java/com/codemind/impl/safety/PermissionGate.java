@@ -94,6 +94,13 @@ public class PermissionGate {
     }
     
     /**
+     * 撤销会话权限
+     */
+    public void revokeSessionPermission(Permission permission) {
+        sessionPermissions.remove(permission);
+    }
+    
+    /**
      * 授予权限（永久）
      */
     public void allow(Permission permission) {

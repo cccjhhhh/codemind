@@ -46,27 +46,32 @@ llm:
 src/main/java/com/codemind/
 ├── api/                    # 接口定义层（Interface）
 │   ├── llm/               # LLM 客户端接口、消息、工具定义
-│   ├── tool/              # 工具接口、工具结果
-│   ├── skill/             # 技能接口、技能上下文、技能结果
-│   └── session/           # 会话管理器接口、会话上下文
+│   ├── tool/              # 工具接口（Tool, ToolResult, ToolRegistry）
+│   ├── skill/             # 技能接口（Skill, SkillRegistry）
+│   ├── session/           # 会话管理器接口、会话上下文
+│   ├── safety/            # 权限接口（Permission, PermissionPrompter, PermissionDecision）
+│   └── cli/               # CLI 接口（OutputFormatter）
 ├── impl/                   # 实现层（Implementation）
 │   ├── llm/               # OpenAI 等 LLM 实现
-│   ├── tool/              # FileReaderTool、CodeSearchTool、CommandRunnerTool、LogParserTool
-│   ├── skill/             # CodeReviewSkill、DocGenSkill、LogAnalysisSkill、SkillRegistry
+│   ├── tool/              # 工具实现（ToolRegistryImpl, FileReaderTool, FileWriterTool...）
+│   ├── skill/             # 技能实现（SkillRegistryImpl, CodeReviewSkill...）
 │   ├── session/           # SessionManagerImpl
-│   └── safety/            # PermissionGate、SafetyChecker、Permission 枚举
+│   ├── safety/            # 安全实现（PermissionGate, SafetyChecker）
+│   └── cli/               # CLI 实现（AnsiStyles, DefaultOutputFormatter）
 ├── core/                   # 核心引擎
-│   ├── AgentLoop.java     # Agent 循环引擎（ReAct 模式）
+│   ├── AgentLoop.java     # Agent 循环引擎（ReAct 模式，支持权限确认）
 │   └── AgentResult.java   # Agent 执行结果
 ├── cli/                    # 命令行入口
-│   └── CLI.java           # Picocli CLI 应用
+│   └── CLI.java           # Picocli CLI 应用（含 CLIPermissionPrompter）
 └── CodeMindApplication.java # 主程序入口
 ```
 
 ## 核心概念
 
-- **AgentLoop**：实现"思考-行动-观察"（Think-Act-Observe）的 ReAct 模式
-- **ToolRegistry**：管理所有工具的注册与执行
+- **AgentLoop**：实现"思考-行动-观察"（Think-Act-Observe）的 ReAct 模式，支持工具执行权限确认
+- **ToolRegistry**：管理所有工具的注册与执行，支持权限检查
+- **PermissionGate**：权限网关，控制危险操作的执行权限（WRITE_FILE, EXECUTE_COMMAND）
+- **PermissionPrompter**：权限询问接口，CLI 实现支持 y/n/session 交互
 - **Skills**：高级任务编排（多工具协作的工作流）
 - **LLMClient**：LLM API 交互封装，支持同步/流式/Function Calling
 

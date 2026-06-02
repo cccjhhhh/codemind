@@ -47,17 +47,20 @@ codemind/
 ├── src/main/java/com/codemind/
 │   ├── api/            # 接口定义层
 │   │   ├── llm/        # LLM 接口（LLMClient, Message, ToolDefinition...）
-│   │   ├── tool/       # 工具接口（Tool, ToolResult）
-│   │   ├── skill/      # 技能接口（Skill, SkillContext, SkillResult）
-│   │   └── session/    # 会话接口（SessionManager, SessionContext）
+│   │   ├── tool/       # 工具接口（Tool, ToolResult, ToolRegistry）
+│   │   ├── skill/      # 技能接口（Skill, SkillRegistry）
+│   │   ├── session/    # 会话接口（SessionManager, SessionContext）
+│   │   ├── safety/     # 权限接口（Permission, PermissionPrompter, PermissionDecision）
+│   │   └── cli/        # CLI 接口（OutputFormatter）
 │   ├── impl/           # 实现层
 │   │   ├── llm/        # OpenAI 等 LLM 实现
-│   │   ├── tool/       # 工具实现（FileReaderTool, CodeSearchTool...）
-│   │   ├── skill/      # 技能实现（CodeReviewSkill, DocGenSkill...）
+│   │   ├── tool/       # 工具实现（ToolRegistryImpl, FileReaderTool, FileWriterTool...）
+│   │   ├── skill/      # 技能实现（SkillRegistryImpl, CodeReviewSkill...）
 │   │   ├── session/    # SessionManagerImpl
-│   │   └── safety/     # 安全实现（PermissionGate, SafetyChecker）
+│   │   ├── safety/     # 安全实现（PermissionGate, SafetyChecker）
+│   │   └── cli/        # CLI 实现（AnsiStyles, DefaultOutputFormatter）
 │   ├── core/           # 核心引擎（AgentLoop, AgentResult）
-│   └── cli/            # 命令行入口
+│   └── cli/            # 命令行入口（CLI, CLIPermissionPrompter）
 ├── src/main/resources/
 │   ├── application.yml # 配置文件
 │   └── prompts/        # Prompt 模板

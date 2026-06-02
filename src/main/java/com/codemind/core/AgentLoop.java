@@ -94,11 +94,14 @@ public class AgentLoop {
                             
                             switch (decision) {
                                 case ALLOW:
-                                    // 重新执行
+                                    // 一次性允许：临时授权，执行后撤销
+                                    permissionGate.grantSessionPermission(permission);
                                     result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+                                    // 执行完后撤销一次性授权
+                                    permissionGate.revokeSessionPermission(permission);
                                     break;
                                 case ALLOW_SESSION:
-                                    // 标记会话权限后重新执行
+                                    // 会话期间允许：授权后保持
                                     permissionGate.grantSessionPermission(permission);
                                     result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
                                     break;

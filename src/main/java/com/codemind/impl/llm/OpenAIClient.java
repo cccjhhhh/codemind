@@ -1,17 +1,17 @@
 package com.codemind.impl.llm;
 
 import com.codemind.api.llm.*;
-import okhttp3.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import okhttp3.*;
 
 import java.io.IOException;
-import java.util.List;
-import java.util.Map;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -380,10 +380,12 @@ public class OpenAIClient implements LLMClient {
                 }
             }
             
-            // content 字段（可能为空）
-            if (msg.getContent() != null && !msg.getContent().isEmpty()) {
-                node.put("content", msg.getContent());
+            // content 字段 - API 要求必须存在，即使是空字符串
+            String content = msg.getContent();
+            if (content == null) {
+                content = "";
             }
+            node.put("content", content);
         }
         return MAPPER.writeValueAsString(array);
     }
