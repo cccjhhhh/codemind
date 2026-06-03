@@ -103,7 +103,7 @@ public class CLI implements Runnable {
         
         // 获取初始模型并创建 LLMClient
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
-        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, 10);
+        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, 10);
         
         // 显示当前模型
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
@@ -134,7 +134,7 @@ public class CLI implements Runnable {
                     // 模型已切换，重新创建客户端
                     try {
                         llmClient = ModelFactory.create(newModel);
-                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, 10);
+                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, 10);
                         System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                         System.out.println();
                     } catch (Exception e) {

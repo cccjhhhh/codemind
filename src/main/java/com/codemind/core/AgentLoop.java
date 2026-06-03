@@ -1,5 +1,6 @@
 package com.codemind.core;
 
+import com.codemind.api.cli.OutputFormatter;
 import com.codemind.api.llm.*;
 import com.codemind.api.safety.Permission;
 import com.codemind.api.safety.PermissionDecision;
@@ -26,19 +27,26 @@ import java.util.function.Consumer;
  * 2. 行动 (Act)：如果 LLM 请求工具调用，则执行工具（支持权限确认）
  * 3. 观察 (Observe)：将工具执行结果反馈给 LLM
  * 4. 重复直到 LLM 返回最终回答
+ * 
+ * 输出格式化：
+ * - 使用 OutputFormatter 接口格式化工具调用、Skill 调用、权限请求
+ * - 提供清晰的视觉层次，便于用户理解 Agent 行为
  */
 public class AgentLoop {
     
     private final LLMClient llmClient;
     private final ToolRegistry toolRegistry;
     private final PermissionGate permissionGate;
+    private final OutputFormatter outputFormatter;
     private final int maxIterations;
     
     public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry, 
-                     PermissionGate permissionGate, int maxIterations) {
+                      PermissionGate permissionGate, OutputFormatter outputFormatter, 
+                      int maxIterations) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.permissionGate = permissionGate;
+        this.outputFormatter = outputFormatter;
         this.maxIterations = maxIterations;
     }
     
@@ -79,6 +87,11 @@ public class AgentLoop {
                 if (turnResult.hasToolCalls()) {
                     // 执行所有工具
                     for (ToolCall toolCall : turnResult.toolCalls) {
+                        
+                        // 格式化并显示工具调用开始
+                        outputHandler.accept(outputFormatter.formatToolCallStart(
+                            toolCall.getName(), toolCall.getArguments()));
+                        
                         // 执行工具
                         ToolResult result = toolRegistry.execute(
                             toolCall.getName(), 
@@ -112,6 +125,10 @@ public class AgentLoop {
                                     break;
                             }
                         }
+                        
+                        // 格式化并显示工具调用结束
+                        outputHandler.accept(outputFormatter.formatToolCallEnd(
+                            toolCall.getName(), result));
                         
                         // 将工具结果添加到历史
                         String resultContent = result.isSuccess() 
@@ -177,8 +194,7 @@ public class AgentLoop {
                         break;
                     
                     case TOOL_CALL_START:
-                        // 工具调用开始
-                        outputHandler.accept("\n[Using " + event.getToolCallName() + "...]");
+                        // 工具调用开始（这里只记录，格式化由 runStream 处理）
                         break;
                     
                     case TOOL_CALL_DELTA:
@@ -186,8 +202,7 @@ public class AgentLoop {
                         break;
                     
                     case TOOL_CALL_COMPLETE:
-                        // 工具调用完成，添加到列表
-                        outputHandler.accept(" done\n");
+                        // 工具调用完成
                         break;
                     
                     case MESSAGE_COMPLETE:
