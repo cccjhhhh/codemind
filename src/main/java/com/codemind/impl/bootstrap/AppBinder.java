@@ -1,12 +1,14 @@
 package com.codemind.impl.bootstrap;
 
 import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
+import com.codemind.api.skill.Skill;
 import com.codemind.api.skill.SkillRegistry;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.session.SessionManagerImpl;
-import com.codemind.impl.skill.SkillRegistryImpl;
+import com.codemind.impl.skill.*;
 import com.codemind.impl.tool.ToolRegistryImpl;
 
 /**
@@ -70,6 +72,37 @@ public class AppBinder {
      */
     public SkillRegistry createSkillRegistry(ToolRegistry toolRegistry) {
         return new SkillRegistryImpl(toolRegistry);
+    }
+    
+    /**
+     * 注册所有 Skill 并包装成 Tool
+     * 
+     * 工作流程：
+     * 1. 创建 Skill 实例
+     * 2. 注册到 SkillRegistry（内部管理）
+     * 3. 包装成 SkillAsTool，注册到 ToolRegistry（LLM 可调用）
+     * 
+     * @param skillRegistry 技能注册中心
+     * @param toolRegistry 工具注册中心
+     * @param sessionContext 会话上下文（用于构建 SkillContext）
+     */
+    public void registerSkills(SkillRegistry skillRegistry, com.codemind.api.tool.ToolRegistry toolRegistry, 
+                               SessionContext sessionContext) {
+        // 1. 创建 Skill 实例
+        Skill codeReviewSkill = new CodeReviewSkill();
+        Skill docGenSkill = new DocGenSkill();
+        Skill logAnalysisSkill = new LogAnalysisSkill();
+        
+        // 2. 注册到 SkillRegistry（内部管理）
+        skillRegistry.register(codeReviewSkill);
+        skillRegistry.register(docGenSkill);
+        skillRegistry.register(logAnalysisSkill);
+        
+        // 3. 包装成 Tool，注册到 ToolRegistry（LLM 可调用）
+        // 注意：SkillAsTool 需要 toolRegistry 以便 Skill 能调用其他 Tool
+        toolRegistry.register(new SkillAsTool(codeReviewSkill, sessionContext, toolRegistry));
+        toolRegistry.register(new SkillAsTool(docGenSkill, sessionContext, toolRegistry));
+        toolRegistry.register(new SkillAsTool(logAnalysisSkill, sessionContext, toolRegistry));
     }
     
     /**

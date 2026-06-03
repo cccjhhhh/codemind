@@ -39,15 +39,42 @@ public class AgentLoop {
     private final PermissionGate permissionGate;
     private final OutputFormatter outputFormatter;
     private final int maxIterations;
+    private final long maxExecutionTimeMs;  // 最大执行时间（毫秒）
     
+    /**
+     * 创建 AgentLoop
+     * 
+     * @param llmClient LLM 客户端
+     * @param toolRegistry 工具注册中心
+     * @param permissionGate 权限网关
+     * @param outputFormatter 输出格式化器
+     * @param maxIterations 最大迭代次数
+     */
     public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry, 
                       PermissionGate permissionGate, OutputFormatter outputFormatter, 
                       int maxIterations) {
+        this(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, 0);
+    }
+    
+    /**
+     * 创建 AgentLoop（带超时）
+     * 
+     * @param llmClient LLM 客户端
+     * @param toolRegistry 工具注册中心
+     * @param permissionGate 权限网关
+     * @param outputFormatter 输出格式化器
+     * @param maxIterations 最大迭代次数
+     * @param maxExecutionTimeSeconds 最大执行时间（秒），0 表示无限制
+     */
+    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry, 
+                      PermissionGate permissionGate, OutputFormatter outputFormatter, 
+                      int maxIterations, int maxExecutionTimeSeconds) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.permissionGate = permissionGate;
         this.outputFormatter = outputFormatter;
         this.maxIterations = maxIterations;
+        this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
     }
     
     /**
@@ -62,11 +89,24 @@ public class AgentLoop {
     public AgentResult runStream(String input, SessionContext context, 
                                   Consumer<String> outputHandler, PermissionPrompter prompter) {
         try {
+            // 0. 记录开始时间
+            long startTime = System.currentTimeMillis();
+            
             // 1. 将用户输入添加到上下文
             context.addMessage(Message.user(input));
             
             // 2. 开始 Agent 循环
             for (int iteration = 0; iteration < maxIterations; iteration++) {
+                
+                // 2.0 检查超时（参考 LangChain AgentExecutor）
+                if (maxExecutionTimeMs > 0) {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    if (elapsed >= maxExecutionTimeMs) {
+                        outputHandler.accept(outputFormatter.formatWarning(
+                            "执行超时（" + (maxExecutionTimeMs / 1000) + "秒），已终止"));
+                        return AgentResult.failure("执行超时");
+                    }
+                }
                 
                 // 2.1 获取经过窗口管理的消息历史和工具定义
                 // 学习要点：上下文窗口管理策略的应用

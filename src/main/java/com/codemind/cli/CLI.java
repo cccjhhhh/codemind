@@ -20,6 +20,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Scanner;
 
@@ -34,6 +35,11 @@ import static com.codemind.impl.cli.AnsiStyles.*;
  * - 单一职责原则（SRP）：只负责命令解析和用户交互
  * - 依赖倒置原则（DIP）：依赖接口而非实现
  * 
+ * 参考 Claude Code：
+ * - 启动时自动检测 git 根目录作为项目目录
+ * - 支持 -p/--project 参数指定项目目录
+ * - LLM 知道工作目录，不会瞎猜路径
+ * 
  * 注意：ANSI 颜色常量已移至 AnsiStyles 类，
  *       CLIPermissionPrompter 已提取为独立类。
  */
@@ -47,6 +53,12 @@ public class CLI implements Runnable {
     
     // API Key 占位符（无效的标志）
     private static final String PLACEHOLDER_KEY_PATTERN = "YOUR_.*_API_KEY";
+    
+    // 默认最大迭代次数（参考 LangChain AgentExecutor）
+    private static final int DEFAULT_MAX_ITERATIONS = 50;
+    
+    // 默认超时时间（秒）
+    private static final int DEFAULT_TIMEOUT_SECONDS = 300;
     
     // ToolRegistry 引用（用于权限管理）
     private ToolRegistryImpl toolRegistry;
@@ -63,8 +75,17 @@ public class CLI implements Runnable {
     @Option(names = {"-c", "--config"}, description = "配置文件路径")
     private String configPath;
     
+    @Option(names = {"-p", "--project"}, description = "项目目录路径（默认自动检测 git 根目录）")
+    private String projectPath;
+    
     @Option(names = {"-v", "--verbose"}, description = "详细输出")
     private boolean verbose;
+    
+    @Option(names = {"--max-iterations"}, description = "最大迭代次数（默认 50）")
+    private int maxIterations = DEFAULT_MAX_ITERATIONS;
+    
+    @Option(names = {"--timeout"}, description = "超时时间（秒，默认 300）")
+    private int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
     
     public static void main(String[] args) {
         int exitCode = new CommandLine(new CLI()).execute(args);
@@ -74,6 +95,9 @@ public class CLI implements Runnable {
     @Override
     public void run() {
         printWelcomeBanner();
+        
+        // 检测项目目录（参考 Claude Code：使用 git root）
+        Path projectDir = detectProjectDirectory();
         
         // 使用 AppBinder 集中管理依赖创建
         AppBinder binder = new AppBinder();
@@ -98,12 +122,20 @@ public class CLI implements Runnable {
         toolRegistry.register(new CommandRunnerTool());
         toolRegistry.register(new LogParserTool());
         
-        // 创建会话
+        // 创建会话并设置工作目录
         SessionContext context = sessionManager.createSession();
+        context.setWorkingDirectory(projectDir);
+        
+        // 设置系统消息，告知 LLM 工作目录（参考 Claude Code）
+        String systemPrompt = buildSystemPrompt(projectDir);
+        context.setSystemMessage(systemPrompt);
+        
+        // 注册所有 Skill 并包装成 Tool
+        binder.registerSkills(deps.getSkillRegistry(), toolRegistry, context);
         
         // 获取初始模型并创建 LLMClient
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
-        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, 10);
+        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds);
         
         // 显示当前模型
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
@@ -134,7 +166,7 @@ public class CLI implements Runnable {
                     // 模型已切换，重新创建客户端
                     try {
                         llmClient = ModelFactory.create(newModel);
-                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, 10);
+                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds);
                         System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                         System.out.println();
                     } catch (Exception e) {
@@ -437,5 +469,50 @@ public class CLI implements Runnable {
         System.out.println();
         System.out.println(DIM + "提示: 使用 /allow <权限> 授权危险操作" + RESET);
         System.out.println();
+    }
+    
+    /**
+     * 检测项目目录
+     * 
+     * 逻辑（参考 Claude Code）：
+     * 1. 如果用户指定了 -p/--project 参数，使用指定目录
+     * 2. 否则，使用 CLI 启动时的当前目录（user.dir）
+     * 
+     * 注意：不需要找 git root，Claude Code 也是直接用当前目录。
+     * 
+     * @return 项目目录路径
+     */
+    private Path detectProjectDirectory() {
+        Path startDir = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        
+        if (projectPath != null && !projectPath.isEmpty()) {
+            // 用户指定了项目目录
+            Path userDir = Path.of(projectPath).toAbsolutePath();
+            if (!userDir.toFile().exists()) {
+                System.out.println(YELLOW + "警告: 指定的项目目录不存在: " + projectPath + RESET);
+                System.out.println(YELLOW + "使用当前目录代替" + RESET);
+                return startDir;
+            }
+            System.out.println(DIM + "使用指定项目目录: " + userDir + RESET);
+            return userDir;
+        }
+
+        // 直接使用 CLI 启动时的当前目录
+        System.out.println(DIM + "工作目录: " + startDir + RESET);
+        return startDir;
+    }
+    
+    /**
+     * 构建系统提示词
+     * 
+     * 参考 Claude Code：告知 LLM 工作目录，避免瞎猜路径
+     * 
+     * @param projectDir 项目目录
+     * @return 系统提示词
+     */
+    private String buildSystemPrompt(Path projectDir) {
+        return "工作目录: " + projectDir.toAbsolutePath() + "\n" +
+               "操作系统: " + System.getProperty("os.name") + "\n" +
+               "注意: 执行命令时默认已在工作目录下，无需 cd。";
     }
 }

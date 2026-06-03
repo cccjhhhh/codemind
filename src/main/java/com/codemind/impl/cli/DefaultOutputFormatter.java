@@ -130,6 +130,11 @@ public class DefaultOutputFormatter implements OutputFormatter {
     }
     
     @Override
+    public String formatWarning(String message) {
+        return "\n" + AnsiStyles.YELLOW + "⚠ " + message + AnsiStyles.RESET + "\n";
+    }
+    
+    @Override
     public String formatThinking(String content) {
         return AnsiStyles.DIM + AnsiStyles.ITALIC + content + AnsiStyles.RESET;
     }

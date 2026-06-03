@@ -57,6 +57,11 @@ public interface OutputFormatter {
     String formatSuccess(String message);
     
     /**
+     * 格式化警告信息
+     */
+    String formatWarning(String message);
+    
+    /**
      * 格式化思考过程（可选）
      */
     default String formatThinking(String content) {

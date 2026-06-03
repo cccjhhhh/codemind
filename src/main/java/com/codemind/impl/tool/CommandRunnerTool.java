@@ -30,7 +30,9 @@ public class CommandRunnerTool implements Tool {
     
     @Override
     public String getDescription() {
-        return "执行 shell 命令并返回输出结果";
+        return "执行 shell 命令并返回输出结果。\n" +
+               "注意：命令会在当前工作目录（user.dir）下执行，无需也不应使用 'cd' 切换目录。\n" +
+               "Windows 系统使用 'cmd /c'，Unix 系统使用 'sh -c'。";
     }
     
     @Override

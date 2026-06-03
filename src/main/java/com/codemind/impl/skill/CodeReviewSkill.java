@@ -4,7 +4,7 @@ import com.codemind.api.analysis.DependencyGraph;
 import com.codemind.api.skill.Skill;
 import com.codemind.api.skill.SkillContext;
 import com.codemind.api.skill.SkillResult;
-import com.codemind.api.tool.ToolRegistry;
+import com.codemind.api.tool.ToolResult;
 import com.codemind.impl.analysis.DependencyGraphImpl;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * 代码审查技能（第二版 - 含依赖图分析）
+ * 代码审查技能（第三版 - SkillAsTool 架构）
  * 
  * 工作流程：
  * 1. 获取 git diff（暂存区优先，回退到工作区）
@@ -25,11 +25,16 @@ import java.util.*;
  * 6. 计算风险评分
  * 7. 返回结构化数据（供 LLM 深度分析）
  * 
+ * 架构变化：
+ * - 通过 SkillContext.callTool() 调用其他 Tool，而非直接持有 ToolRegistry
+ * - SkillAsTool 负责将 Skill 包装成 Tool 暴露给 LLM
+ * 
  * 学习要点：
  * - 依赖图构建（import 解析）
  * - BFS 遍历算法
  * - 影响范围分析
  * - 风险评分计算
+ * - Skill 与 Tool 的协作模式
  */
 public class CodeReviewSkill implements Skill {
     
@@ -41,11 +46,9 @@ public class CodeReviewSkill implements Skill {
     // 默认风险评分阈值
     private static final double HIGH_RISK_THRESHOLD = 0.5;
     
-    private final ToolRegistry toolRegistry;
     private final DependencyGraph dependencyGraph;
     
-    public CodeReviewSkill(ToolRegistry toolRegistry) {
-        this.toolRegistry = toolRegistry;
+    public CodeReviewSkill() {
         this.dependencyGraph = new DependencyGraphImpl();
     }
     
@@ -66,7 +69,7 @@ public class CodeReviewSkill implements Skill {
             // =============================================
             // 步骤 1: 获取 git diff
             // =============================================
-            String diff = getGitDiff();
+            String diff = getGitDiff(context);
             
             if (diff == null || diff.isEmpty()) {
                 return SkillResult.success(JSON.createObjectNode()
@@ -106,7 +109,7 @@ public class CodeReviewSkill implements Skill {
             // =============================================
             // 步骤 5: 读取文件内容
             // =============================================
-            Map<String, String> fileContents = readFiles(allFilesToAnalyze);
+            Map<String, String> fileContents = readFiles(context, allFilesToAnalyze);
             
             // =============================================
             // 步骤 6: 计算风险评分
@@ -194,9 +197,9 @@ public class CodeReviewSkill implements Skill {
     /**
      * 获取 git diff
      */
-    private String getGitDiff() {
+    private String getGitDiff(SkillContext context) {
         // 先尝试暂存区
-        var stagedResult = toolRegistry.execute("execute_command", 
+        ToolResult stagedResult = context.callTool("execute_command", 
             Map.of("command", "git diff --cached", "timeout", 30));
         
         if (stagedResult.isSuccess() && 
@@ -206,7 +209,7 @@ public class CodeReviewSkill implements Skill {
         }
         
         // 回退到工作区
-        var unstagedResult = toolRegistry.execute("execute_command", 
+        ToolResult unstagedResult = context.callTool("execute_command", 
             Map.of("command", "git diff", "timeout", 30));
         
         if (unstagedResult.isSuccess()) {
@@ -236,12 +239,12 @@ public class CodeReviewSkill implements Skill {
     /**
      * 读取文件内容
      */
-    private Map<String, String> readFiles(Set<String> files) {
+    private Map<String, String> readFiles(SkillContext context, Set<String> files) {
         Map<String, String> contents = new HashMap<>();
         
         for (String file : files) {
             try {
-                var result = toolRegistry.execute("read_file", 
+                ToolResult result = context.callTool("read_file", 
                     Map.of("path", file));
                 
                 if (result.isSuccess() && result.getOutput() != null) {
