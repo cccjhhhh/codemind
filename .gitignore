@@ -37,7 +37,7 @@ out/
 .sisyphus/
 
 # Learning progress (personal notes)
-docs/
+docs/superpowers/progress
 
 # OpenCode state
 .git/opencode

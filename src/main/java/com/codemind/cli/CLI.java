@@ -4,16 +4,17 @@ import com.codemind.api.cli.OutputFormatter;
 import com.codemind.api.llm.LLMClient;
 import com.codemind.api.llm.ModelConfig;
 import com.codemind.api.safety.Permission;
-import com.codemind.api.safety.PermissionDecision;
+import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
+import com.codemind.impl.bootstrap.AppBinder;
+import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
-import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.tool.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -22,10 +23,19 @@ import picocli.CommandLine.Option;
 import java.util.List;
 import java.util.Scanner;
 
+import static com.codemind.impl.cli.AnsiStyles.*;
+
 /**
  * CodeMind 命令行界面
  * 
  * 提供 ANSI 颜色美化的交互式界面
+ * 
+ * 设计原则：
+ * - 单一职责原则（SRP）：只负责命令解析和用户交互
+ * - 依赖倒置原则（DIP）：依赖接口而非实现
+ * 
+ * 注意：ANSI 颜色常量已移至 AnsiStyles 类，
+ *       CLIPermissionPrompter 已提取为独立类。
  */
 @Command(
     name = "codemind",
@@ -35,27 +45,20 @@ import java.util.Scanner;
 )
 public class CLI implements Runnable {
     
-    // ANSI 颜色常量
-    private static final String RESET = "\u001B[0m";
-    private static final String BOLD = "\u001B[1m";
-    private static final String CYAN = "\u001B[36m";
-    private static final String GREEN = "\u001B[32m";
-    private static final String YELLOW = "\u001B[33m";
-    private static final String BLUE = "\u001B[34m";
-    private static final String RED = "\u001B[31m";
-    private static final String DIM = "\u001B[2m";
-    
     // API Key 占位符（无效的标志）
     private static final String PLACEHOLDER_KEY_PATTERN = "YOUR_.*_API_KEY";
     
-    // ToolRegistryImpl 引用（用于权限管理）
+    // ToolRegistry 引用（用于权限管理）
     private ToolRegistryImpl toolRegistry;
+    
+    // PermissionGate 引用（用于权限检查）
+    private PermissionGate permissionGate;
     
     // OutputFormatter 引用
     private OutputFormatter outputFormatter = new DefaultOutputFormatter();
     
     // PermissionPrompter 引用
-    private PermissionPrompter permissionPrompter = new CLIPermissionPrompter();
+    private PermissionPrompter permissionPrompter = new CLIPermissionPrompter(outputFormatter);
     
     @Option(names = {"-c", "--config"}, description = "配置文件路径")
     private String configPath;
@@ -72,15 +75,21 @@ public class CLI implements Runnable {
     public void run() {
         printWelcomeBanner();
         
+        // 使用 AppBinder 集中管理依赖创建
+        AppBinder binder = new AppBinder();
+        AppBinder.AppDependencies deps = binder.createDependencies();
+        
         // 初始化模型管理器
         ModelManager modelManager = new ModelManager();
         
-        // 初始化其他组件
-        ToolRegistryImpl toolRegistry = new ToolRegistryImpl();
-        SessionManager sessionManager = new SessionManagerImpl();
+        // 从依赖配置中获取组件
+        ToolRegistryImpl toolRegistry = (ToolRegistryImpl) deps.getToolRegistry();
+        SessionManager sessionManager = deps.getSessionManager();
+        PermissionGate permissionGate = deps.getPermissionGate();
         
         // 保存引用以便后续使用
         this.toolRegistry = toolRegistry;
+        this.permissionGate = permissionGate;
         
         // 注册所有工具
         toolRegistry.register(new FileReaderTool());
@@ -94,7 +103,7 @@ public class CLI implements Runnable {
         
         // 获取初始模型并创建 LLMClient
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
-        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, toolRegistry.getPermissionGate(), 10);
+        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, 10);
         
         // 显示当前模型
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
@@ -125,7 +134,7 @@ public class CLI implements Runnable {
                     // 模型已切换，重新创建客户端
                     try {
                         llmClient = ModelFactory.create(newModel);
-                        agentLoop = new AgentLoop(llmClient, toolRegistry, toolRegistry.getPermissionGate(), 10);
+                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, 10);
                         System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                         System.out.println();
                     } catch (Exception e) {
@@ -409,8 +418,8 @@ public class CLI implements Runnable {
         
         Permission[] permissions = Permission.values();
         for (Permission perm : permissions) {
-            boolean needsConfirm = toolRegistry.getPermissionGate().needsConfirmation(perm);
-            boolean hasPermission = toolRegistry.getPermissionGate().hasPermission(perm);
+            boolean needsConfirm = permissionGate.needsConfirmation(perm);
+            boolean hasPermission = permissionGate.hasPermission(perm);
             
             String status;
             if (hasPermission) {
@@ -428,35 +437,5 @@ public class CLI implements Runnable {
         System.out.println();
         System.out.println(DIM + "提示: 使用 /allow <权限> 授权危险操作" + RESET);
         System.out.println();
-    }
-    
-    /**
-     * CLI 权限询问器
-     */
-    public class CLIPermissionPrompter implements PermissionPrompter {
-        
-        @Override
-        public PermissionDecision prompt(Permission permission, String context) {
-            System.out.print(outputFormatter.formatPermissionPrompt(permission, context));
-            
-            Scanner scanner = new Scanner(System.in);
-            String input = scanner.nextLine().trim().toLowerCase();
-            
-            switch (input) {
-                case "y":
-                case "yes":
-                case "1":
-                    return PermissionDecision.ALLOW;
-                case "s":
-                case "session":
-                case "2":
-                    return PermissionDecision.ALLOW_SESSION;
-                case "n":
-                case "no":
-                case "3":
-                default:
-                    return PermissionDecision.DENY;
-            }
-        }
     }
 }

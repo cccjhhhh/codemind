@@ -2,10 +2,11 @@ package com.codemind.impl.tool;
 
 import com.codemind.api.llm.ToolDefinition;
 import com.codemind.api.safety.Permission;
+import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.safety.PermissionGate;
+import com.codemind.impl.safety.PermissionGateImpl;
 
 import java.util.*;
 
@@ -30,7 +31,7 @@ public class ToolRegistryImpl implements ToolRegistry {
     private final PermissionGate permissionGate;
     
     public ToolRegistryImpl() {
-        this.permissionGate = new PermissionGate(true); // 默认需要确认危险操作
+        this.permissionGate = new PermissionGateImpl(true); // 默认需要确认危险操作
     }
     
     public ToolRegistryImpl(PermissionGate permissionGate) {

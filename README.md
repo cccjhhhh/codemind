@@ -52,15 +52,18 @@ codemind/
 │   │   ├── session/    # 会话接口（SessionManager, SessionContext）
 │   │   ├── safety/     # 权限接口（Permission, PermissionPrompter, PermissionDecision）
 │   │   └── cli/        # CLI 接口（OutputFormatter）
+│   ├── dto/            # 数据传输对象层
+│   │   └── session/    # 会话 DTO（MessageDto, SessionSnapshotDto 等）
 │   ├── impl/           # 实现层
 │   │   ├── llm/        # OpenAI 等 LLM 实现
-│   │   ├── tool/       # 工具实现（ToolRegistryImpl, FileReaderTool, FileWriterTool...）
+│   │   ├── tool/       # 工具实现（ToolRegistryImpl, FileReaderTool...）
 │   │   ├── skill/      # 技能实现（SkillRegistryImpl, CodeReviewSkill...）
 │   │   ├── session/    # SessionManagerImpl
-│   │   ├── safety/     # 安全实现（PermissionGate, SafetyChecker）
-│   │   └── cli/        # CLI 实现（AnsiStyles, DefaultOutputFormatter）
+│   │   ├── safety/     # 安全实现（PermissionGateImpl, SafetyChecker）
+│   │   ├── cli/        # CLI 实现（AnsiStyles, CLIPermissionPrompter...）
+│   │   └── bootstrap/  # 依赖注入配置（AppBinder）
 │   ├── core/           # 核心引擎（AgentLoop, AgentResult）
-│   └── cli/            # 命令行入口（CLI, CLIPermissionPrompter）
+│   └── cli/            # 命令行入口（CLI）
 ├── src/main/resources/
 │   ├── application.yml # 配置文件
 │   └── prompts/        # Prompt 模板

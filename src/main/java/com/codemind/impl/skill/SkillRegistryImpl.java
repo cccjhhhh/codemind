@@ -2,9 +2,10 @@ package com.codemind.impl.skill;
 
 import com.codemind.api.skill.Skill;
 import com.codemind.api.skill.SkillContext;
-import com.codemind.api.skill.SkillResult;
 import com.codemind.api.skill.SkillRegistry;
-import com.codemind.impl.tool.ToolRegistryImpl;
+import com.codemind.api.skill.SkillResult;
+import com.codemind.api.tool.ToolRegistry;
+
 import java.util.List;
 
 /**
@@ -14,10 +15,10 @@ import java.util.List;
  */
 public class SkillRegistryImpl implements SkillRegistry {
     
-    private final ToolRegistryImpl toolRegistry;
+    private final ToolRegistry toolRegistry;
     private final java.util.Map<String, Skill> skills = new java.util.HashMap<>();
     
-    public SkillRegistryImpl(ToolRegistryImpl toolRegistry) {
+    public SkillRegistryImpl(ToolRegistry toolRegistry) {
         this.toolRegistry = toolRegistry;
     }
     

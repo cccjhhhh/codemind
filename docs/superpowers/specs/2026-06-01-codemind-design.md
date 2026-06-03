@@ -125,31 +125,53 @@ case ALLOW:
 
 ```
 src/main/java/com/codemind/
-├── api/                    # 接口定义层
-│   ├── llm/               # LLM 接口
-│   ├── tool/              # 工具接口 (Tool, ToolResult, ToolRegistry)
-│   ├── skill/             # 技能接口 (Skill, SkillRegistry)
-│   ├── session/           # 会话接口
-│   ├── safety/            # 权限接口 ⭐ 新增
+├── api/                         # 接口定义层
+│   ├── llm/                    # LLM 接口
+│   ├── tool/                   # 工具接口 (Tool, ToolResult, ToolRegistry)
+│   ├── skill/                  # 技能接口 (Skill, SkillRegistry)
+│   ├── session/                # 会话接口
+│   ├── safety/                 # 权限接口
 │   │   ├── Permission.java
 │   │   ├── PermissionDecision.java
-│   │   └── PermissionPrompter.java
-│   └── cli/               # CLI 接口 ⭐ 新增
+│   │   ├── PermissionPrompter.java
+│   │   └── PermissionGate.java     ⭐ 接口化
+│   └── cli/                    # CLI 接口
 │       └── OutputFormatter.java
-├── impl/                   # 实现层
-│   ├── llm/              # OpenAI 实现
-│   ├── tool/             # 工具实现
-│   ├── skill/            # 技能实现
-│   ├── session/          # 会话实现
-│   ├── safety/           # 权限实现
-│   └── cli/              # CLI 实现 ⭐ 新增
-│       ├── AnsiStyles.java
-│       └── DefaultOutputFormatter.java
-├── core/                   # 核心引擎
-│   └── AgentLoop.java    # 支持权限确认的 Agent 循环
-└── cli/                   # CLI 入口
-    └── CLI.java           # 含 CLIPermissionPrompter
+├── dto/                         # 数据传输对象层 ⭐ 新增
+│   └── session/                # 会话 DTO
+│       ├── MessageDto.java
+│       ├── ToolCallDto.java
+│       ├── SessionInfoDto.java
+│       └── SessionSnapshotDto.java
+├── impl/                        # 实现层
+│   ├── llm/                    # OpenAI 实现
+│   ├── tool/                   # 工具实现
+│   ├── skill/                  # 技能实现
+│   ├── session/                # 会话实现（内部 DTO 已移出）
+│   ├── safety/                 # 权限实现
+│   │   ├── PermissionGateImpl.java  ⭐ 重命名
+│   │   └── SafetyChecker.java
+│   ├── cli/                    # CLI 实现
+│   │   ├── AnsiStyles.java
+│   │   ├── DefaultOutputFormatter.java
+│   │   └── CLIPermissionPrompter.java  ⭐ 独立类
+│   └── bootstrap/              # 依赖注入配置 ⭐ 新增
+│       └── AppBinder.java
+├── core/                        # 核心引擎
+│   └── AgentLoop.java          # 支持权限确认的 Agent 循环
+└── cli/                         # CLI 入口
+    └── CLI.java                # 简化，移除内部类
 ```
+
+### 2.3 架构约束规范
+
+| 原则 | 说明 |
+|------|------|
+| **单一职责（SRP）** | 每个类只负责一个职责，DTO 必须独立文件 |
+| **依赖倒置（DIP）** | 高层模块依赖接口，不依赖实现 |
+| **接口分离（ISP）** | 接口小而专注，内部类不应实现接口 |
+| **DTO 规范** | DTO 类必须在 `dto/` 包下独立文件 |
+| **依赖注入** | 使用构造器注入，配置在 `bootstrap/` 包 |
 
 ---
 

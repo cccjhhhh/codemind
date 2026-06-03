@@ -1,35 +1,38 @@
 package com.codemind.impl.safety;
 
 import com.codemind.api.safety.Permission;
+import com.codemind.api.safety.PermissionGate;
 
 import java.util.HashSet;
 import java.util.Set;
 
 /**
- * 权限网关
+ * 权限网关实现
  * 
  * 控制危险操作的执行权限。
  * 学习要点：权限控制模型、白名单机制、用户确认流程
+ * 
+ * 设计原则：依赖倒置原则（DIP）
+ * - 此类实现 PermissionGate 接口
+ * - 高层模块通过接口使用，不直接依赖此类
  */
-public class PermissionGate {
+public class PermissionGateImpl implements PermissionGate {
     
     private final Set<String> allowedCommands;
     private final boolean confirmDangerousOperations;
     private final Set<Permission> sessionPermissions = new HashSet<>();
     private final Set<Permission> allowedPermissions = new HashSet<>();
     
-    public PermissionGate(Set<String> allowedCommands, boolean confirmDangerousOperations) {
+    public PermissionGateImpl(Set<String> allowedCommands, boolean confirmDangerousOperations) {
         this.allowedCommands = allowedCommands;
         this.confirmDangerousOperations = confirmDangerousOperations;
     }
     
-    public PermissionGate(boolean confirmDangerousOperations) {
+    public PermissionGateImpl(boolean confirmDangerousOperations) {
         this(Set.of(), confirmDangerousOperations);
     }
     
-    /**
-     * 检查权限
-     */
+    @Override
     public boolean hasPermission(Permission permission) {
         // 检查会话权限
         if (sessionPermissions.contains(permission)) {
@@ -52,9 +55,7 @@ public class PermissionGate {
         }
     }
     
-    /**
-     * 检查是否需要确认
-     */
+    @Override
     public boolean needsConfirmation(Permission permission) {
         // 会话权限不需要确认
         if (sessionPermissions.contains(permission)) {
@@ -86,37 +87,27 @@ public class PermissionGate {
         return isAllowed(permission);
     }
     
-    /**
-     * 授予会话级别的权限（本次会话有效）
-     */
+    @Override
     public void grantSessionPermission(Permission permission) {
         sessionPermissions.add(permission);
     }
     
-    /**
-     * 撤销会话权限
-     */
+    @Override
     public void revokeSessionPermission(Permission permission) {
         sessionPermissions.remove(permission);
     }
     
-    /**
-     * 授予权限（永久）
-     */
+    @Override
     public void allow(Permission permission) {
         allowedPermissions.add(permission);
     }
     
-    /**
-     * 撤销权限
-     */
+    @Override
     public void disallow(Permission permission) {
         allowedPermissions.remove(permission);
     }
     
-    /**
-     * 强制检查权限，不满足则抛出异常
-     */
+    @Override
     public void enforcePermission(Permission permission, String context) {
         if (!hasPermission(permission)) {
             throw new SecurityException(

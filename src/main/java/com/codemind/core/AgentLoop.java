@@ -3,11 +3,11 @@ package com.codemind.core;
 import com.codemind.api.llm.*;
 import com.codemind.api.safety.Permission;
 import com.codemind.api.safety.PermissionDecision;
+import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.safety.PermissionGate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -60,8 +60,9 @@ public class AgentLoop {
             // 2. 开始 Agent 循环
             for (int iteration = 0; iteration < maxIterations; iteration++) {
                 
-                // 2.1 获取对话历史和工具定义
-                List<Message> history = context.getHistory();
+                // 2.1 获取经过窗口管理的消息历史和工具定义
+                // 学习要点：上下文窗口管理策略的应用
+                List<Message> history = context.getManagedHistory();
                 List<ToolDefinition> tools = toolRegistry.getAllDefinitions();
                 
                 // 2.2 调用 LLM（流式）
