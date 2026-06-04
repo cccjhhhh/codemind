@@ -1,7 +1,20 @@
 # Skill 系统架构设计（方案 A）
 
 > 日期：2026-06-03
-> 状态：待实现
+> 状态：⚠️ **已废弃 - 被 2026-06-04-skill-system-redesign.md 取代**
+> 废弃原因：SkillAsTool 模式导致 LLM 无法区分 Tool 和 Skill，LLM 倾向直接调用 Tool
+
+## ⚠️ 重要说明
+
+本文档描述的设计已被新设计取代：
+
+- **新设计文档**：`2026-06-04-skill-system-redesign.md`
+- **核心变化**：
+  - 从 SkillAsTool 包装模式 → SkillRouter 关键词硬路由
+  - 从隐式路由（依赖 LLM 推理）→ 显式路由（关键词匹配）
+  - 新增 SKILL.md 文件定义触发规则
+
+---
 
 ## 问题背景
 

@@ -1,6 +1,6 @@
 package com.codemind.api.skill;
 
-import com.codemind.api.session.SessionContext;
+import java.util.List;
 
 /**
  * 技能接口
@@ -27,4 +27,26 @@ public interface Skill {
      * @return 技能执行结果
      */
     SkillResult execute(SkillContext context);
+    
+    /**
+     * 获取触发关键词（用于硬路由）
+     * 
+     * 默认返回空列表，由 SKILL.md 定义
+     * 
+     * @return 触发关键词列表
+     */
+    default List<String> getTriggerKeywords() {
+        return List.of();
+    }
+    
+    /**
+     * 获取禁用关键词（用于跳过触发）
+     * 
+     * 默认返回空列表，由 SKILL.md 定义
+     * 
+     * @return 禁用关键词列表
+     */
+    default List<String> getDisabledKeywords() {
+        return List.of();
+    }
 }

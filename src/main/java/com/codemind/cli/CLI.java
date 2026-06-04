@@ -15,6 +15,7 @@ import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
+import com.codemind.impl.skill.*;
 import com.codemind.impl.tool.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -130,12 +131,27 @@ public class CLI implements Runnable {
         String systemPrompt = buildSystemPrompt(projectDir);
         context.setSystemMessage(systemPrompt);
         
-        // 注册所有 Skill 并包装成 Tool
-        binder.registerSkills(deps.getSkillRegistry(), toolRegistry, context);
+        // 创建 SkillLoader
+        // 正确顺序：先注册 Executor，再加载 Skill 定义
+        SkillLoader skillLoader = binder.createSkillLoader();
         
-        // 获取初始模型并创建 LLMClient
+        // 1. 先注册 Executor（Java 实现类）
+        // 注意：Executor 名称必须与 SKILL.md 中的 name 字段一致
+        skillLoader.registerExecutor("code_review", new CodeReviewSkill());
+        skillLoader.registerExecutor("generate_docs", new DocGenSkill());
+        skillLoader.registerExecutor("analyze_logs", new LogAnalysisSkill());
+        
+        // 2. 再从 classpath 加载 Skill 定义（会自动关联已注册的 Executor）
+        List<SkillDefinition> skillDefinitions = binder.loadSkillsFromClasspath(skillLoader, null);
+        
+        // 3. 先获取初始模型并创建 LLMClient（SkillRouter 需要）
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
-        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds);
+        
+        // 4. 创建 SkillRouter（使用语义路由）
+        SkillRouter skillRouter = binder.createSkillRouter(llmClient, skillDefinitions);
+        
+        // 5. 创建 AgentLoop
+        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter);
         
         // 显示当前模型
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
@@ -513,6 +529,10 @@ public class CLI implements Runnable {
     private String buildSystemPrompt(Path projectDir) {
         return "工作目录: " + projectDir.toAbsolutePath() + "\n" +
                "操作系统: " + System.getProperty("os.name") + "\n" +
-               "注意: 执行命令时默认已在工作目录下，无需 cd。";
+               "注意: 执行命令时默认已在工作目录下，无需 cd。\n\n" +
+               "可用技能（优先使用这些，而不是自己拼凑命令）：\n" +
+               "- code_review: 当你需要审查代码时使用\n" +
+               "- analyze_logs: 当你需要分析日志时使用\n" +
+               "- generate_docs: 当你需要生成文档时使用\n";
     }
 }

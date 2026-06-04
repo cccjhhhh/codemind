@@ -15,20 +15,14 @@ import java.util.Map;
 /**
  * Skill 包装成 Tool 的适配器
  * 
- * 作用：将 Skill 转换为 LLM 可调用的 Tool
- * 设计：一个 SkillAsTool 类通用包装所有 Skill，无需为每个 Skill 写新包装器
+ * @deprecated 使用新的 SkillRouter 系统代替。
+ *             Skill 现在通过关键词硬匹配触发，不再需要包装成 Tool。
+ *             保留此类是为了向后兼容，未来版本可能移除。
  * 
- * 使用方式：
- * <pre>
- * Skill codeReviewSkill = new CodeReviewSkill();
- * toolRegistry.register(new SkillAsTool(codeReviewSkill, sessionContext, toolRegistry));
- * </pre>
- * 
- * 学习要点：
- * - 适配器模式：Tool 接口 → Skill 接口
- * - 委托：实际执行委托给 Skill
- * - 参数转换：Map → SkillContext
+ * @see SkillRouter
+ * @see SkillDefinition
  */
+@Deprecated(since = "2026-06-04", forRemoval = true)
 public class SkillAsTool implements Tool {
     
     private static final ObjectMapper JSON = new ObjectMapper();

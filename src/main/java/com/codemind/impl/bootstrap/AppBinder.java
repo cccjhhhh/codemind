@@ -1,15 +1,20 @@
 package com.codemind.impl.bootstrap;
 
+import com.codemind.api.llm.LLMClient;
 import com.codemind.api.safety.PermissionGate;
-import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
-import com.codemind.api.skill.Skill;
+import com.codemind.api.skill.SkillExecutor;
 import com.codemind.api.skill.SkillRegistry;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.skill.*;
 import com.codemind.impl.tool.ToolRegistryImpl;
+
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
 
 /**
  * 应用依赖注入配置
@@ -75,34 +80,25 @@ public class AppBinder {
     }
     
     /**
-     * 注册所有 Skill 并包装成 Tool
+     * 注册所有 Skill Executor
      * 
      * 工作流程：
-     * 1. 创建 Skill 实例
-     * 2. 注册到 SkillRegistry（内部管理）
-     * 3. 包装成 SkillAsTool，注册到 ToolRegistry（LLM 可调用）
+     * 1. 创建 SkillLoader 加载 Skill 定义
+     * 2. 创建 SkillExecutor 实例
+     * 3. 注册 Executor 到 SkillLoader
      * 
-     * @param skillRegistry 技能注册中心
-     * @param toolRegistry 工具注册中心
-     * @param sessionContext 会话上下文（用于构建 SkillContext）
+     * @param skillLoader Skill 加载器
+     * @param skillsDir Skill 目录路径（包含 SKILL.md 文件）
      */
-    public void registerSkills(SkillRegistry skillRegistry, com.codemind.api.tool.ToolRegistry toolRegistry, 
-                               SessionContext sessionContext) {
-        // 1. 创建 Skill 实例
-        Skill codeReviewSkill = new CodeReviewSkill();
-        Skill docGenSkill = new DocGenSkill();
-        Skill logAnalysisSkill = new LogAnalysisSkill();
+    public void registerSkillExecutors(SkillLoader skillLoader, String skillsDir) {
+        // 1. 加载 Skill 定义
+        List<SkillDefinition> definitions = loadSkills(skillLoader, skillsDir);
         
-        // 2. 注册到 SkillRegistry（内部管理）
-        skillRegistry.register(codeReviewSkill);
-        skillRegistry.register(docGenSkill);
-        skillRegistry.register(logAnalysisSkill);
-        
-        // 3. 包装成 Tool，注册到 ToolRegistry（LLM 可调用）
-        // 注意：SkillAsTool 需要 toolRegistry 以便 Skill 能调用其他 Tool
-        toolRegistry.register(new SkillAsTool(codeReviewSkill, sessionContext, toolRegistry));
-        toolRegistry.register(new SkillAsTool(docGenSkill, sessionContext, toolRegistry));
-        toolRegistry.register(new SkillAsTool(logAnalysisSkill, sessionContext, toolRegistry));
+        // 2. 注册 Executor（匹配定义中的名称）
+        // 注意：Executor 名称需与 SKILL.md 中的 name 字段一致
+        skillLoader.registerExecutor("code_review", new CodeReviewSkill());
+        skillLoader.registerExecutor("generate_docs", new DocGenSkill());
+        skillLoader.registerExecutor("analyze_logs", new LogAnalysisSkill());
     }
     
     /**
@@ -112,6 +108,66 @@ public class AppBinder {
      */
     public SessionManager createSessionManager() {
         return new SessionManagerImpl();
+    }
+    
+    /**
+     * 创建 SkillLoader
+     * 
+     * @return SkillLoader 实例
+     */
+    public SkillLoader createSkillLoader() {
+        return new SkillLoader();
+    }
+    
+    /**
+     * 从 classpath 加载所有 Skill（通用方案）
+     * 
+     * 自动扫描 classpath 中的 skills/ 目录，适用于任何项目
+     * 
+     * @param skillLoader 加载器
+     * @param classLoader 类加载器，null 则使用当前线程的上下文类加载器
+     * @return 加载的 Skill 列表
+     */
+    public List<SkillDefinition> loadSkillsFromClasspath(SkillLoader skillLoader, ClassLoader classLoader) {
+        return skillLoader.loadAllFromClasspath(classLoader);
+    }
+    
+    /**
+     * 从指定目录加载所有 Skill
+     * 
+     * @param skillLoader 加载器
+     * @param skillsDir Skill 目录路径
+     * @return 加载的 Skill 列表
+     */
+    public List<SkillDefinition> loadSkills(SkillLoader skillLoader, String skillsDir) {
+        try {
+            Path skillsPath = Paths.get(skillsDir);
+            return skillLoader.loadAll(skillsPath);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load skills from: " + skillsDir, e);
+        }
+    }
+    
+    /**
+     * 创建 SkillRouter（支持语义路由）
+     * 
+     * @param llmClient LLM 客户端（用于语义路由）
+     * @param skills Skill 定义列表
+     * @return SkillRouter 实例
+     */
+    public SkillRouter createSkillRouter(LLMClient llmClient, List<SkillDefinition> skills) {
+        return new SkillRouter(llmClient, skills);
+    }
+    
+    /**
+     * 注册 Skill Executor
+     * 
+     * @param loader Skill 加载器
+     * @param skillName Skill 名称
+     * @param executor 执行器
+     */
+    public void registerSkillExecutor(SkillLoader loader, String skillName, SkillExecutor executor) {
+        loader.registerExecutor(skillName, executor);
     }
     
     /**

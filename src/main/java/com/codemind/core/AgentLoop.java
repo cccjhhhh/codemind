@@ -7,8 +7,13 @@ import com.codemind.api.safety.PermissionDecision;
 import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
+import com.codemind.api.skill.SkillContext;
+import com.codemind.api.skill.SkillResult;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
+import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.impl.skill.SkillRoute;
+import com.codemind.impl.skill.SkillRouter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,6 +45,7 @@ public class AgentLoop {
     private final OutputFormatter outputFormatter;
     private final int maxIterations;
     private final long maxExecutionTimeMs;  // 最大执行时间（毫秒）
+    private final SkillRouter skillRouter;  // Skill 路由（可选）
     
     /**
      * 创建 AgentLoop
@@ -75,6 +81,31 @@ public class AgentLoop {
         this.outputFormatter = outputFormatter;
         this.maxIterations = maxIterations;
         this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
+        this.skillRouter = null;
+    }
+    
+    /**
+     * 创建 AgentLoop（带 SkillRouter）
+     * 
+     * @param llmClient LLM 客户端
+     * @param toolRegistry 工具注册中心
+     * @param permissionGate 权限网关
+     * @param outputFormatter 输出格式化器
+     * @param maxIterations 最大迭代次数
+     * @param maxExecutionTimeSeconds 最大执行时间（秒），0 表示无限制
+     * @param skillRouter Skill 路由器（关键词硬路由）
+     */
+    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry, 
+                      PermissionGate permissionGate, OutputFormatter outputFormatter, 
+                      int maxIterations, int maxExecutionTimeSeconds, 
+                      SkillRouter skillRouter) {
+        this.llmClient = llmClient;
+        this.toolRegistry = toolRegistry;
+        this.permissionGate = permissionGate;
+        this.outputFormatter = outputFormatter;
+        this.maxIterations = maxIterations;
+        this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
+        this.skillRouter = skillRouter;
     }
     
     /**
@@ -91,6 +122,47 @@ public class AgentLoop {
         try {
             // 0. 记录开始时间
             long startTime = System.currentTimeMillis();
+            
+            // ==================== 新增：Skill 硬路由检查 ====================
+            if (skillRouter != null) {
+                SkillRoute route = skillRouter.route(input);
+                
+                if (route != null) {
+                    // 命中 Skill：强制执行
+                    outputHandler.accept(outputFormatter.formatSkillStart(
+                        route.skill().getName(), input));
+                    
+                    SkillDefinition skill = route.skill();
+                    
+                    // 构建 SkillContext
+                    SkillContext skillContext = new SkillContext(
+                        context,  // SessionContext
+                        skill.getName(),
+                        input,
+                        toolRegistry
+                    );
+                    
+                    // 执行 Skill
+                    SkillResult skillResult = skill.execute(skillContext);
+                    
+                    outputHandler.accept(outputFormatter.formatSkillEnd(skillResult));
+                    
+                    // Skill 结果添加到历史
+                    context.addMessage(Message.user(input));
+                    context.addMessage(Message.skillResult(skillResult));
+                    
+                    // 检查 SkillResult 是否包含 action: reply_to_user
+                    // 如果是，直接提取消息返回给用户，不再调用 LLM
+                    String replyMessage = extractReplyMessage(skillResult);
+                    if (replyMessage != null) {
+                        return AgentResult.success(replyMessage);
+                    }
+                    
+                    // 继续原有流程
+                    return runLLMWithSkillResult(skillResult, context, outputHandler, prompter, startTime);
+                }
+            }
+            // ==================== 结束 Skill 路由检查 ====================
             
             // 1. 将用户输入添加到上下文
             context.addMessage(Message.user(input));
@@ -287,6 +359,87 @@ public class AgentLoop {
     }
     
     /**
+     * 处理 Skill 结果后继续 LLM 流程
+     * 
+     * 修复：正确处理工具调用循环，而不是只执行一轮就返回失败
+     */
+    private AgentResult runLLMWithSkillResult(SkillResult skillResult,
+                                             SessionContext context,
+                                             Consumer<String> outputHandler, 
+                                             PermissionPrompter prompter,
+                                             long startTime) {
+        try {
+            // 迭代处理 LLM 响应和工具调用
+            for (int iteration = 0; iteration < maxIterations; iteration++) {
+                // 检查超时
+                if (maxExecutionTimeMs > 0) {
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    if (elapsed >= maxExecutionTimeMs) {
+                        return AgentResult.failure("执行超时");
+                    }
+                }
+                
+                // 获取历史和工具
+                List<Message> history = context.getManagedHistory();
+                List<ToolDefinition> tools = toolRegistry.getAllDefinitions();
+                
+                // 调用 LLM 处理 Skill 结果
+                AgentTurnResult turnResult = runSingleTurn(history, tools, outputHandler);
+                
+                // 添加 LLM 回复
+                if (turnResult.hasToolCalls()) {
+                    context.addMessage(Message.assistantWithTools(turnResult.fullText, turnResult.toolCalls));
+                } else {
+                    context.addMessage(Message.assistant(turnResult.fullText));
+                    // 没有工具调用，LLM 已给出最终回答
+                    return AgentResult.success(turnResult.fullText);
+                }
+                
+                // 处理工具调用
+                for (ToolCall toolCall : turnResult.toolCalls) {
+                    outputHandler.accept(outputFormatter.formatToolCallStart(
+                        toolCall.getName(), toolCall.getArguments()));
+                    
+                    ToolResult result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+                    
+                    if (result.needsConfirmation()) {
+                        Permission permission = result.getRequiredPermission();
+                        PermissionDecision decision = prompter.prompt(permission, "工具: " + toolCall.getName());
+                        
+                        switch (decision) {
+                            case ALLOW:
+                                permissionGate.grantSessionPermission(permission);
+                                result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+                                permissionGate.revokeSessionPermission(permission);
+                                break;
+                            case ALLOW_SESSION:
+                                permissionGate.grantSessionPermission(permission);
+                                result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+                                break;
+                            case DENY:
+                            default:
+                                result = ToolResult.failure("用户拒绝授权: " + permission.getDescription());
+                                break;
+                        }
+                    }
+                    
+                    outputHandler.accept(outputFormatter.formatToolCallEnd(toolCall.getName(), result));
+                    
+                    String resultContent = result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
+                    context.addMessage(Message.tool(resultContent, toolCall.getId()));
+                }
+                // 继续循环，等待下一轮 LLM 响应
+            }
+            
+            // 达到最大迭代次数
+            return AgentResult.failure("达到最大迭代次数 " + maxIterations);
+            
+        } catch (Exception e) {
+            return AgentResult.failure("Agent 执行失败: " + e.getMessage());
+        }
+    }
+    
+    /**
      * 单轮 LLM 调用结果
      */
     private static class AgentTurnResult {
@@ -301,5 +454,37 @@ public class AgentLoop {
         boolean hasToolCalls() {
             return toolCalls != null && !toolCalls.isEmpty();
         }
+    }
+    
+    /**
+     * 从 SkillResult 中提取直接回复消息
+     * 
+     * 如果 SkillResult 包含 action: reply_to_user，则提取消息直接返回
+     */
+    private String extractReplyMessage(SkillResult skillResult) {
+        if (!skillResult.isSuccess() || skillResult.getOutput() == null) {
+            return null;
+        }
+        
+        String output = skillResult.getOutput();
+        
+        // 检查是否包含 action: reply_to_user
+        if (!output.contains("\"action\"") || !output.contains("reply_to_user")) {
+            return null;
+        }
+        
+        // 提取 message 字段
+        try {
+            java.util.regex.Pattern messagePattern = java.util.regex.Pattern.compile(
+                "\"message\"\\s*:\\s*\"([^\"]+)\"");
+            java.util.regex.Matcher matcher = messagePattern.matcher(output);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        } catch (Exception e) {
+            // 忽略解析错误
+        }
+        
+        return null;
     }
 }

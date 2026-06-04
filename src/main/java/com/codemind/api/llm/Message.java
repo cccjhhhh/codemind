@@ -1,7 +1,8 @@
 package com.codemind.api.llm;
 
+import com.codemind.api.skill.SkillResult;
+
 import java.util.List;
-import java.util.ArrayList;
 
 /**
  * 消息
@@ -61,6 +62,19 @@ public class Message {
     
     public static Message tool(String content, String toolCallId) {
         return new Message(Role.TOOL, content, toolCallId);
+    }
+    
+    /**
+     * 创建 Skill 结果消息
+     * 
+     * @param result Skill 执行结果
+     * @return 消息
+     */
+    public static Message skillResult(SkillResult result) {
+        String content = result.isSuccess() 
+            ? "Skill Result:\n" + result.getOutput()
+            : "Skill Error: " + result.getError();
+        return new Message(Role.TOOL, content);
     }
     
     // ========== Getter 方法 ==========

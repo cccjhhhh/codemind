@@ -1,0 +1,15 @@
+# Skill: code_review
+name: code_review
+
+# 依赖的 Tool 白名单（Skill 内部可以调用这些 Tool）
+allowed_tools:
+  - execute_command
+  - read_file
+
+# 版本信息
+version: "1.0.0"
+
+# 权限要求
+permissions:
+  - READ_FILE
+  - EXECUTE_COMMAND

@@ -1,8 +1,7 @@
 package com.codemind.impl.skill;
 
-import com.codemind.api.analysis.DependencyGraph;
-import com.codemind.api.skill.Skill;
 import com.codemind.api.skill.SkillContext;
+import com.codemind.api.skill.SkillExecutor;
 import com.codemind.api.skill.SkillResult;
 import com.codemind.api.tool.ToolResult;
 import com.codemind.impl.analysis.DependencyGraphImpl;
@@ -14,29 +13,24 @@ import java.nio.file.Path;
 import java.util.*;
 
 /**
- * 代码审查技能（第三版 - SkillAsTool 架构）
+ * 代码审查技能
  * 
  * 工作流程：
- * 1. 获取 git diff（暂存区优先，回退到工作区）
- * 2. 解析变更文件列表
- * 3. 构建依赖图（解析 import 语句）
- * 4. 查找受影响文件（BFS 遍历）
- * 5. 读取文件内容（变更文件 + 受影响文件）
- * 6. 计算风险评分
- * 7. 返回结构化数据（供 LLM 深度分析）
+ * 1. 检查是否在 git 仓库中
+ * 2. 获取 git diff（暂存区优先，回退到工作区）
+ * 3. 解析变更文件列表
+ * 4. 构建依赖图（解析 import 语句）
+ * 5. 查找受影响文件（BFS 遍历）
+ * 6. 读取文件内容（变更文件 + 受影响文件）
+ * 7. 计算风险评分
+ * 8. 返回结构化数据（供 LLM 深度分析）
  * 
- * 架构变化：
- * - 通过 SkillContext.callTool() 调用其他 Tool，而非直接持有 ToolRegistry
- * - SkillAsTool 负责将 Skill 包装成 Tool 暴露给 LLM
- * 
- * 学习要点：
- * - 依赖图构建（import 解析）
- * - BFS 遍历算法
- * - 影响范围分析
- * - 风险评分计算
- * - Skill 与 Tool 的协作模式
+ * 改进点：
+ * - 添加 git 仓库前置检查
+ * - 支持用户指定审查范围
+ * - 更好的错误处理和提示
  */
-public class CodeReviewSkill implements Skill {
+public class CodeReviewSkill implements SkillExecutor {
     
     private static final ObjectMapper JSON = new ObjectMapper();
     
@@ -46,26 +40,23 @@ public class CodeReviewSkill implements Skill {
     // 默认风险评分阈值
     private static final double HIGH_RISK_THRESHOLD = 0.5;
     
-    private final DependencyGraph dependencyGraph;
-    
-    public CodeReviewSkill() {
-        this.dependencyGraph = new DependencyGraphImpl();
-    }
-    
-    @Override
-    public String getName() {
-        return "code_review";
-    }
-    
-    @Override
-    public String getDescription() {
-        return "对代码变更进行审查，发现潜在问题并提供改进建议。\n" +
-               "支持依赖图分析，找出变更可能影响的其他文件。";
-    }
-    
     @Override
     public SkillResult execute(SkillContext context) {
         try {
+            // =============================================
+            // 步骤 0: 检查 git 仓库
+            // =============================================
+            if (!isGitRepository(context)) {
+                Path workDir = context.getSessionContext().getWorkingDirectory();
+                return SkillResult.success(JSON.createObjectNode()
+                    .put("status", "not_git_repo")
+                    .put("message", "当前目录不是 git 仓库，无法获取代码变更")
+                    .put("workingDirectory", workDir.toString())
+                    .put("suggestion", "请告诉用户：当前工作目录不是 git 仓库。如果要审查代码，需要先执行 git init 或切换到 git 仓库目录。")
+                    .put("action", "reply_to_user")  // 明确指示：直接回复用户，不要再调用工具
+                    .toString());
+            }
+            
             // =============================================
             // 步骤 1: 获取 git diff
             // =============================================
@@ -75,6 +66,7 @@ public class CodeReviewSkill implements Skill {
                 return SkillResult.success(JSON.createObjectNode()
                     .put("status", "no_changes")
                     .put("message", "没有检测到代码变更")
+                    .put("hint", "请先用 git add 添加变更，或修改代码文件")
                     .toString());
             }
             
@@ -95,13 +87,27 @@ public class CodeReviewSkill implements Skill {
             // 步骤 3: 构建依赖图
             // =============================================
             Path workingDir = context.getSessionContext().getWorkingDirectory();
-            dependencyGraph.build(workingDir);
+            DependencyGraphImpl dependencyGraph = new DependencyGraphImpl();
+            
+            try {
+                dependencyGraph.build(workingDir);
+            } catch (Exception e) {
+                // 依赖图构建失败不影响主流程
+                logDependencyGraphError(e);
+            }
             
             // =============================================
             // 步骤 4: 查找受影响文件
             // =============================================
             Set<String> changedSet = new HashSet<>(changedFiles);
-            Set<String> affectedFiles = dependencyGraph.findAffectedFiles(changedSet, DEFAULT_MAX_HOPS);
+            Set<String> affectedFiles = new HashSet<>();
+            
+            try {
+                affectedFiles = dependencyGraph.findAffectedFiles(changedSet, DEFAULT_MAX_HOPS);
+            } catch (Exception e) {
+                // 回退：只分析变更文件
+                affectedFiles = changedSet;
+            }
             
             // 合并变更文件和受影响文件（去重）
             Set<String> allFilesToAnalyze = new HashSet<>(affectedFiles);
@@ -114,14 +120,19 @@ public class CodeReviewSkill implements Skill {
             // =============================================
             // 步骤 6: 计算风险评分
             // =============================================
-            Map<String, Double> riskScores = calculateRiskScores(changedFiles);
+            Map<String, Double> riskScores = calculateRiskScores(changedFiles, dependencyGraph);
             
             // =============================================
             // 步骤 7: 构建结构化结果
             // =============================================
             ObjectNode result = JSON.createObjectNode();
             result.put("status", "success");
-            result.put("dependencyGraphStats", dependencyGraph.getStats());
+            
+            try {
+                result.put("dependencyGraphStats", dependencyGraph.getStats());
+            } catch (Exception e) {
+                result.put("dependencyGraphStats", "构建失败");
+            }
             
             // 变更文件信息
             ObjectNode changes = result.putObject("changes");
@@ -195,12 +206,28 @@ public class CodeReviewSkill implements Skill {
     }
     
     /**
+     * 检查是否在 git 仓库中
+     */
+    private boolean isGitRepository(SkillContext context) {
+        Path workDir = context.getSessionContext().getWorkingDirectory();
+        
+        ToolResult result = context.callTool("execute_command", 
+            Map.of("command", "git rev-parse --is-inside-work-tree", "timeout", 5, "cwd", workDir.toString()));
+        
+        return result.isSuccess() && 
+               result.getOutput() != null && 
+               result.getOutput().trim().equals("true");
+    }
+    
+    /**
      * 获取 git diff
      */
     private String getGitDiff(SkillContext context) {
+        Path workDir = context.getSessionContext().getWorkingDirectory();
+        
         // 先尝试暂存区
         ToolResult stagedResult = context.callTool("execute_command", 
-            Map.of("command", "git diff --cached", "timeout", 30));
+            Map.of("command", "git diff --cached", "timeout", 30, "cwd", workDir.toString()));
         
         if (stagedResult.isSuccess() && 
             stagedResult.getOutput() != null && 
@@ -210,7 +237,7 @@ public class CodeReviewSkill implements Skill {
         
         // 回退到工作区
         ToolResult unstagedResult = context.callTool("execute_command", 
-            Map.of("command", "git diff", "timeout", 30));
+            Map.of("command", "git diff", "timeout", 30, "cwd", workDir.toString()));
         
         if (unstagedResult.isSuccess()) {
             return unstagedResult.getOutput();
@@ -241,11 +268,15 @@ public class CodeReviewSkill implements Skill {
      */
     private Map<String, String> readFiles(SkillContext context, Set<String> files) {
         Map<String, String> contents = new HashMap<>();
+        Path workingDir = context.getSessionContext().getWorkingDirectory();
         
         for (String file : files) {
             try {
+                // 构建绝对路径
+                Path filePath = workingDir.resolve(file);
+                
                 ToolResult result = context.callTool("read_file", 
-                    Map.of("path", file));
+                    Map.of("path", filePath.toString()));
                 
                 if (result.isSuccess() && result.getOutput() != null) {
                     contents.put(file, result.getOutput());
@@ -261,12 +292,24 @@ public class CodeReviewSkill implements Skill {
     /**
      * 计算风险评分
      */
-    private Map<String, Double> calculateRiskScores(List<String> files) {
+    private Map<String, Double> calculateRiskScores(List<String> files, DependencyGraphImpl graph) {
         Map<String, Double> scores = new HashMap<>();
         for (String file : files) {
-            scores.put(file, dependencyGraph.calculateRiskScore(file));
+            try {
+                scores.put(file, graph.calculateRiskScore(file));
+            } catch (Exception e) {
+                // 回退：使用默认评分
+                scores.put(file, 0.3);  // 中等风险
+            }
         }
         return scores;
+    }
+    
+    /**
+     * 记录依赖图构建错误
+     */
+    private void logDependencyGraphError(Exception e) {
+        // 简单实现：不记录，不影响主流程
     }
     
     /**

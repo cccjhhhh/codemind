@@ -1,0 +1,6 @@
+name: generate_docs
+allowed_tools:
+  - read_file
+  - write_file
+  - execute_command
+version: "1.0.0"

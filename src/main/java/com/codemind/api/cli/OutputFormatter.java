@@ -1,6 +1,7 @@
 package com.codemind.api.cli;
 
 import com.codemind.api.safety.Permission;
+import com.codemind.api.skill.SkillResult;
 import com.codemind.api.tool.ToolResult;
 
 import java.util.Map;
@@ -104,6 +105,31 @@ public interface OutputFormatter {
             return " ✓ 完成" + (summary != null ? " → " + summary : "") + "\n";
         } else {
             return " ✗ 失败\n";
+        }
+    }
+    
+    /**
+     * 格式化 Skill 开始（用于硬路由命中 Skill 时）
+     * 
+     * @param skillName Skill 名称
+     * @param input 用户输入
+     * @return 格式化后的字符串
+     */
+    default String formatSkillStart(String skillName, String input) {
+        return "\n🎯 [Skill 硬路由命中] " + skillName + " - 正在执行...\n输入: " + input + "\n";
+    }
+    
+    /**
+     * 格式化 Skill 结果
+     * 
+     * @param result Skill 执行结果
+     * @return 格式化后的字符串
+     */
+    default String formatSkillEnd(SkillResult result) {
+        if (result.isSuccess()) {
+            return "\n✅ Skill 执行成功:\n" + result.getOutput() + "\n";
+        } else {
+            return "\n❌ Skill 执行失败:\n" + result.getError() + "\n";
         }
     }
 }
