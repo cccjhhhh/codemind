@@ -14,6 +14,8 @@ import com.codemind.api.tool.ToolResult;
 import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillRoute;
 import com.codemind.impl.skill.SkillRouter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +40,8 @@ import java.util.function.Consumer;
  * - 提供清晰的视觉层次，便于用户理解 Agent 行为
  */
 public class AgentLoop {
+    
+    private static final Logger log = LoggerFactory.getLogger(AgentLoop.class);
     
     private final LLMClient llmClient;
     private final ToolRegistry toolRegistry;
@@ -128,38 +132,46 @@ public class AgentLoop {
                 SkillRoute route = skillRouter.route(input);
                 
                 if (route != null) {
-                    // 命中 Skill：强制执行
-                    outputHandler.accept(outputFormatter.formatSkillStart(
-                        route.skill().getName(), input));
-                    
-                    SkillDefinition skill = route.skill();
-                    
-                    // 构建 SkillContext
-                    SkillContext skillContext = new SkillContext(
-                        context,  // SessionContext
-                        skill.getName(),
-                        input,
-                        toolRegistry
-                    );
-                    
-                    // 执行 Skill
-                    SkillResult skillResult = skill.execute(skillContext);
-                    
-                    outputHandler.accept(outputFormatter.formatSkillEnd(skillResult));
-                    
-                    // Skill 结果添加到历史
-                    context.addMessage(Message.user(input));
-                    context.addMessage(Message.skillResult(skillResult));
-                    
-                    // 检查 SkillResult 是否包含 action: reply_to_user
-                    // 如果是，直接提取消息返回给用户，不再调用 LLM
-                    String replyMessage = extractReplyMessage(skillResult);
-                    if (replyMessage != null) {
-                        return AgentResult.success(replyMessage);
+                    // 检查是否应该执行 Skill（置信度阈值判断）
+                    if (!route.shouldExecute()) {
+                        // 置信度不足，fallback 到普通 Chat
+                        log.debug("Skill route confidence too low: {} (threshold: {})", 
+                            route.confidence(), SkillRoute.CONFIDENCE_THRESHOLD);
+                        // 继续原有流程，不执行 Skill
+                    } else {
+                        // 命中 Skill：强制执行
+                        outputHandler.accept(outputFormatter.formatSkillStart(
+                            route.skill().getName(), input));
+                        
+                        SkillDefinition skill = route.skill();
+                        
+                        // 构建 SkillContext
+                        SkillContext skillContext = new SkillContext(
+                            context,  // SessionContext
+                            skill.getName(),
+                            input,
+                            toolRegistry
+                        );
+                        
+                        // 执行 Skill
+                        SkillResult skillResult = skill.execute(skillContext);
+                        
+                        outputHandler.accept(outputFormatter.formatSkillEnd(skillResult));
+                        
+                        // Skill 结果添加到历史
+                        context.addMessage(Message.user(input));
+                        context.addMessage(Message.skillResult(skillResult));
+                        
+                        // 检查 SkillResult 是否包含 action: reply_to_user
+                        // 如果是，直接提取消息返回给用户，不再调用 LLM
+                        String replyMessage = extractReplyMessage(skillResult);
+                        if (replyMessage != null) {
+                            return AgentResult.success(replyMessage);
+                        }
+                        
+                        // 继续原有流程
+                        return runLLMWithSkillResult(skillResult, context, outputHandler, prompter, startTime);
                     }
-                    
-                    // 继续原有流程
-                    return runLLMWithSkillResult(skillResult, context, outputHandler, prompter, startTime);
                 }
             }
             // ==================== 结束 Skill 路由检查 ====================
@@ -171,8 +183,9 @@ public class AgentLoop {
             for (int iteration = 0; iteration < maxIterations; iteration++) {
                 
                 // 2.0 检查超时（参考 LangChain AgentExecutor）
+                long elapsed = System.currentTimeMillis() - startTime;
+                
                 if (maxExecutionTimeMs > 0) {
-                    long elapsed = System.currentTimeMillis() - startTime;
                     if (elapsed >= maxExecutionTimeMs) {
                         outputHandler.accept(outputFormatter.formatWarning(
                             "执行超时（" + (maxExecutionTimeMs / 1000) + "秒），已终止"));
@@ -180,15 +193,23 @@ public class AgentLoop {
                     }
                 }
                 
+                // 显示进度（iteration + elapsed time）
+                if (iteration > 0) {
+                    outputHandler.accept(outputFormatter.formatProgress(iteration, maxIterations, elapsed));
+                }
+                
                 // 2.1 获取经过窗口管理的消息历史和工具定义
                 // 学习要点：上下文窗口管理策略的应用
                 List<Message> history = context.getManagedHistory();
                 List<ToolDefinition> tools = toolRegistry.getAllDefinitions();
                 
-                // 2.2 调用 LLM（流式）
+                // 2.2 显示思考指示器
+                outputHandler.accept(outputFormatter.formatThinkingStart());
+                
+                // 2.3 调用 LLM（流式）- 思考指示器在第一个文本增量时自动清除
                 AgentTurnResult turnResult = runSingleTurn(history, tools, outputHandler);
                 
-                // 2.3 将 LLM 回复添加到历史（包含 tool_calls）
+                // 2.4 将 LLM 回复添加到历史（包含 tool_calls）
                 if (turnResult.hasToolCalls()) {
                     context.addMessage(Message.assistantWithTools(turnResult.fullText, turnResult.toolCalls));
                 } else {
@@ -293,6 +314,7 @@ public class AgentLoop {
         AtomicReference<String> fullText = new AtomicReference<>("");
         AtomicReference<List<ToolCall>> toolCalls = new AtomicReference<>(new ArrayList<>());
         AtomicReference<Exception> error = new AtomicReference<>(null);
+        AtomicReference<Boolean> firstDelta = new AtomicReference<>(true);
         
         // 调用流式 API
         llmClient.chatStreamWithTools(history, tools, new LLMClient.StreamHandler() {
@@ -301,6 +323,10 @@ public class AgentLoop {
             public void onEvent(StreamEvent event) {
                 switch (event.getType()) {
                     case TEXT_DELTA:
+                        // 第一个文本增量：清除思考指示器
+                        if (firstDelta.compareAndSet(true, false)) {
+                            outputHandler.accept(outputFormatter.formatThinkingEnd());
+                        }
                         // 文本增量，实时输出
                         outputHandler.accept(event.getTextDelta());
                         break;

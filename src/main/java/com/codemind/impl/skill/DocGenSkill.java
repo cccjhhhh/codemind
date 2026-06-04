@@ -55,6 +55,18 @@ public class DocGenSkill implements SkillExecutor {
             TargetPathInfo pathInfo = parseTargetPath(context, userInput);
             
             if (pathInfo.path == null || pathInfo.path.isEmpty()) {
+                // 没有找到有效的文件路径
+                // 判断用户意图：是要生成内容还是要文档化代码？
+                if (isGenerateContentIntent(userInput)) {
+                    // 用户想生成内容（如诗歌、文章等），返回特殊指令让 LLM 处理
+                    return SkillResult.success(JSON.createObjectNode()
+                        .put("action", "reply_to_user")
+                        .put("message", "好的，我来帮您生成文档内容。")
+                        .put("hint", "请根据用户的描述生成相应的内容，格式美观")
+                        .toString());
+                }
+                
+                // 用户想文档化代码但没指定文件
                 return SkillResult.success(JSON.createObjectNode()
                     .put("status", "need_input")
                     .put("message", "请提供要生成文档的文件或目录路径")
@@ -97,6 +109,21 @@ public class DocGenSkill implements SkillExecutor {
     }
     
     /**
+     * 判断用户是否想生成内容（而非文档化代码）
+     */
+    private boolean isGenerateContentIntent(String input) {
+        if (input == null) return false;
+        String lower = input.toLowerCase();
+        
+        // 生成内容的关键词
+        return lower.contains("写一首") || 
+               lower.contains("写一个") && (lower.contains("诗歌") || lower.contains("诗") || lower.contains("故事")) ||
+               lower.contains("生成") && (lower.contains("诗歌") || lower.contains("故事") || lower.contains("文章")) ||
+               lower.contains("创作") ||
+               lower.contains("帮我写");
+    }
+    
+    /**
      * 目标路径信息
      */
     private static class TargetPathInfo {
@@ -113,6 +140,8 @@ public class DocGenSkill implements SkillExecutor {
      * 从用户输入中解析目标路径
      * 
      * 改进：更严谨的路径识别逻辑
+     * - 不把自然语言句子当文件路径
+     * - 识别"生成内容"意图 vs "文档化代码"意图
      */
     private TargetPathInfo parseTargetPath(SkillContext context, String userInput) {
         if (userInput == null || userInput.isEmpty()) {
@@ -121,7 +150,13 @@ public class DocGenSkill implements SkillExecutor {
         
         String trimmed = userInput.trim();
         
-        // 1. 如果看起来像文件路径（有扩展名）
+        // 0. 检查是否是自然语言句子（不是文件路径）
+        // 如果包含中文标点或空格分隔的多个词，说明是句子不是路径
+        if (isNaturalLanguageSentence(trimmed)) {
+            return new TargetPathInfo(null, false);
+        }
+        
+        // 1. 如果看起来像文件路径（有扩展名或路径分隔符）
         if (looksLikeFilePath(trimmed)) {
             return new TargetPathInfo(trimmed, false);
         }
@@ -140,8 +175,40 @@ public class DocGenSkill implements SkillExecutor {
             return new TargetPathInfo(candidateStr, looksLikeDirectoryPath(candidateStr));
         }
         
-        // 4. 默认按文件处理
-        return new TargetPathInfo(trimmed, false);
+        // 4. 不像路径，返回 null（表示需要用户提供文件路径）
+        return new TargetPathInfo(null, false);
+    }
+    
+    /**
+     * 判断是否是自然语言句子（而非文件路径）
+     */
+    private boolean isNaturalLanguageSentence(String input) {
+        if (input == null || input.isEmpty()) return false;
+        
+        // 中文标点符号（说明是句子）
+        if (input.matches(".*[，。！？、；：\u201c\u201d''（）【】].*")) {
+            return true;
+        }
+        
+        // 包含空格分隔的多个中文词（说明是句子）
+        // 例如："生成文档呢，里面写一个诗歌"
+        long chineseCharCount = input.chars().filter(c -> c >= 0x4E00 && c <= 0x9FFF).count();
+        if (chineseCharCount > 4) {
+            // 超过4个中文字符，且不包含路径分隔符，很可能是句子
+            if (!input.contains("/") && !input.contains("\\") && !input.contains(".")) {
+                return true;
+            }
+        }
+        
+        // 英文句子（包含空格和常见词）
+        String lower = input.toLowerCase();
+        if (lower.contains(" with ") || lower.contains(" about ") || 
+            lower.contains(" for ") || lower.contains(" that ") ||
+            lower.contains(" please ") || lower.contains(" write ")) {
+            return true;
+        }
+        
+        return false;
     }
     
     /**

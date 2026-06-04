@@ -1,12 +1,24 @@
 # Skill 系统重新设计实现计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **状态：✅ 已完成（2026-06-04）**
 
 **Goal:** 实现 Claude Code 风格的 Skill 系统，通过关键词硬匹配实现确定性触发，解决 LLM 直接调用 Tool 而不使用 Skill 的问题。
 
 **Architecture:** 采用混合模式 - Java 类负责业务逻辑执行，SKILL.md 文件负责定义触发规则和元数据。Tool 是原子操作（LLM 自由选择），Skill 是多步流程（关键词触发）。渐进式加载节省 token。
 
 **Tech Stack:** Java 17, Jackson (YAML 解析), SnakeYAML, 无外部 Agent 框架依赖
+
+---
+
+## 实现摘要
+
+所有 Tasks 已完成。实际实现与计划有以下差异：
+
+| 计划 | 实际实现 | 原因 |
+|------|----------|------|
+| 单一 `SkillRouter.java` | `KeywordSkillRouter.java` + `SemanticSkillRouter.java` | 职责分离更清晰 |
+| `SkillRoute.java` 无 confidence | 新增 confidence 字段 + shouldExecute() 方法 | 支持置信度阈值判断 |
+| `RouteReason.java` 3 个枚举 | 扩展为 7 个枚举（LLM_INTENT_HIGH/LOW, NEGATIVE_INDICATOR） | 更细粒度的路由追踪 |
 
 ---
 

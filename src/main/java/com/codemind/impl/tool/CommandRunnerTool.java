@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.util.Map;
 
@@ -17,6 +18,7 @@ import java.util.Map;
  * - 进程执行与结果收集
  * - 安全沙箱设计
  * - 超时处理
+ * - 工作目录设置
  */
 public class CommandRunnerTool implements Tool {
     
@@ -31,7 +33,7 @@ public class CommandRunnerTool implements Tool {
     @Override
     public String getDescription() {
         return "执行 shell 命令并返回输出结果。\n" +
-               "注意：命令会在当前工作目录（user.dir）下执行，无需也不应使用 'cd' 切换目录。\n" +
+               "注意：命令会在工作目录下执行。\n" +
                "Windows 系统使用 'cmd /c'，Unix 系统使用 'sh -c'。";
     }
     
@@ -49,6 +51,10 @@ public class CommandRunnerTool implements Tool {
         ObjectNode timeoutProp = properties.putObject("timeout");
         timeoutProp.put("type", "integer");
         timeoutProp.put("description", "超时时间（秒）");
+        
+        ObjectNode cwdProp = properties.putObject("cwd");
+        cwdProp.put("type", "string");
+        cwdProp.put("description", "工作目录（可选）");
         
         schema.putArray("required").add("command");
         
@@ -68,6 +74,15 @@ public class CommandRunnerTool implements Tool {
             Integer timeout = (Integer) params.get("timeout");
             int timeoutSeconds = timeout != null ? timeout : DEFAULT_TIMEOUT_SECONDS;
             
+            String cwd = (String) params.get("cwd");
+            File workingDir = null;
+            
+            // 设置工作目录
+            if (cwd != null && !cwd.isEmpty()) {
+                workingDir = new File(cwd);
+                System.out.println("[DEBUG] CommandRunnerTool: cwd=" + workingDir.getAbsolutePath());
+            }
+            
             ProcessBuilder pb = new ProcessBuilder();
             
             // Windows vs Unix 命令处理
@@ -77,7 +92,14 @@ public class CommandRunnerTool implements Tool {
                 pb.command("sh", "-c", command);
             }
             
+            // 设置工作目录（如果指定）
+            if (workingDir != null) {
+                pb.directory(workingDir);
+            }
+            
             pb.redirectErrorStream(true);
+            
+            System.out.println("[DEBUG] Executing command: " + command);
             
             Process process = pb.start();
             
@@ -101,6 +123,8 @@ public class CommandRunnerTool implements Tool {
             if (exitCode != 0) {
                 return ToolResult.failure("命令执行失败（退出码: " + exitCode + "）\n输出: " + output);
             }
+            
+            System.out.println("[DEBUG] Command output: " + output.toString().trim());
             
             return ToolResult.success(output.toString());
             

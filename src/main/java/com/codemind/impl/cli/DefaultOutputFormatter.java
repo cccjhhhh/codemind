@@ -139,7 +139,68 @@ public class DefaultOutputFormatter implements OutputFormatter {
         return AnsiStyles.DIM + AnsiStyles.ITALIC + content + AnsiStyles.RESET;
     }
     
+    // ========== 思考指示器（Thinking Indicator）==========
+    
+    private static final String THINKING_TEXT = "∴ Thinking";
+    private static final String[] THINKING_FRAMES = {
+        "∴ Thinking   ",
+        "∴ Thinking.  ",
+        "∴ Thinking.. ",
+        "∴ Thinking..."
+    };
+    
+    @Override
+    public String formatThinkingStart() {
+        return "\n" + AnsiStyles.DIM + THINKING_TEXT + "..." + AnsiStyles.RESET + "\n";
+    }
+    
+    @Override
+    public String formatThinkingEnd() {
+        // 清除当前行
+        return "\r" + AnsiStyles.CLEAR_LINE;
+    }
+    
+    @Override
+    public String formatThinkingContent(String content) {
+        return AnsiStyles.DIM + "  ∴ " + content + AnsiStyles.RESET + "\n";
+    }
+    
+    @Override
+    public String formatProgress(int iteration, int total, long elapsedMs) {
+        double seconds = elapsedMs / 1000.0;
+        return "◐ [" + AnsiStyles.CYAN + (iteration + 1) + AnsiStyles.RESET + 
+               "/" + total + "] " + AnsiStyles.DIM + String.format("%.1fs", seconds) + AnsiStyles.RESET + " > ";
+    }
+    
+    @Override
+    public String formatSpinner(int state) {
+        return THINKING_FRAMES[state % THINKING_FRAMES.length];
+    }
+    
+    // ========== 状态栏（Status Bar）==========
+    
+    @Override
+    public String formatStatusBar(String model, long sessionDurationMs) {
+        return "[" + AnsiStyles.CYAN + model + AnsiStyles.RESET + "] " + 
+               formatDuration(sessionDurationMs);
+    }
+    
     // ========== Skill 格式化（新增）==========
+    
+    /**
+     * 格式化 Skill 命中（用于硬路由）
+     */
+    @Override
+    public String formatSkillStart(String skillName, String input) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("\n")
+          .append(AnsiStyles.BOLD).append(AnsiStyles.MAGENTA)
+          .append("🎯 Skill 命中").append(AnsiStyles.RESET)
+          .append(": ")
+          .append(AnsiStyles.CYAN).append(skillName).append(AnsiStyles.RESET)
+          .append(" - 正在执行...\n");
+        return sb.toString();
+    }
     
     /**
      * 格式化 Skill 调用开始
@@ -163,10 +224,122 @@ public class DefaultOutputFormatter implements OutputFormatter {
     /**
      * 格式化 Skill 调用进度阶段
      */
+    @Override
     public String formatSkillProgress(String stage) {
         return AnsiStyles.CLEAR_LINE + 
                AnsiStyles.DIM + "   ↳ " + AnsiStyles.RESET +
-               AnsiStyles.CYAN + stage + AnsiStyles.RESET + "...";
+               AnsiStyles.CYAN + stage + AnsiStyles.RESET + "...\n";
+    }
+    
+    /**
+     * 格式化 Skill 结果
+     */
+    @Override
+    public String formatSkillEnd(com.codemind.api.skill.SkillResult result) {
+        StringBuilder sb = new StringBuilder();
+        if (result.isSuccess()) {
+            sb.append("\n")
+              .append(AnsiStyles.GREEN).append("✅ Skill 执行成功").append(AnsiStyles.RESET)
+              .append("\n");
+            
+            String output = result.getOutput();
+            if (output != null && !output.isEmpty()) {
+                // 检查是否是 JSON 格式
+                if (output.startsWith("{")) {
+                    // JSON 输出：提取关键信息，不打印完整 JSON
+                    sb.append(formatJsonOutput(output));
+                } else if (output.length() > 100) {
+                    // 长文本：只显示摘要
+                    sb.append(AnsiStyles.DIM).append(truncate(output, 100)).append(AnsiStyles.RESET)
+                      .append(AnsiStyles.DIM).append("... (共 ").append(output.length()).append(" 字符)").append(AnsiStyles.RESET);
+                } else {
+                    sb.append(output);
+                }
+            }
+            sb.append("\n");
+        } else {
+            sb.append("\n")
+              .append(AnsiStyles.RED).append("❌ Skill 执行失败").append(AnsiStyles.RESET)
+              .append("\n")
+              .append(AnsiStyles.RED).append(result.getError()).append(AnsiStyles.RESET)
+              .append("\n");
+        }
+        return sb.toString();
+    }
+    
+    /**
+     * 格式化 JSON 输出，提取关键信息
+     */
+    private String formatJsonOutput(String json) {
+        try {
+            // 简单解析：提取 status 和 message
+            String status = extractJsonValue(json, "status");
+            String message = extractJsonValue(json, "message");
+            String action = extractJsonValue(json, "action");
+            
+            if (action != null && "reply_to_user".equals(action)) {
+                // 直接回复用户
+                return message != null ? message : "";
+            }
+            
+            if ("need_input".equals(status)) {
+                return AnsiStyles.YELLOW + message + AnsiStyles.RESET;
+            }
+            
+            if ("error".equals(status)) {
+                String error = extractJsonValue(json, "error");
+                return AnsiStyles.RED + "错误: " + (message != null ? message : error) + AnsiStyles.RESET;
+            }
+            
+            if ("success".equals(status)) {
+                String file = extractJsonValue(json, "file");
+                int classCount = extractJsonInt(json, "classCount");
+                int methodCount = extractJsonInt(json, "methodCount");
+                return AnsiStyles.CYAN + "文档已生成" + AnsiStyles.RESET + 
+                       (file != null ? " → " + AnsiStyles.DIM + file + AnsiStyles.RESET : "") +
+                       " (" + classCount + " 类, " + methodCount + " 方法)";
+            }
+            
+            // 默认：显示 message
+            return message != null ? message : AnsiStyles.DIM + json.substring(0, Math.min(50, json.length())) + AnsiStyles.RESET;
+        } catch (Exception e) {
+            return AnsiStyles.DIM + truncate(json, 80) + AnsiStyles.RESET;
+        }
+    }
+    
+    /**
+     * 从 JSON 字符串中提取字符串值
+     */
+    private String extractJsonValue(String json, String key) {
+        try {
+            // 简单的正则提取
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
+            java.util.regex.Matcher matcher = pattern.matcher(json);
+            if (matcher.find()) {
+                return matcher.group(1);
+            }
+        } catch (Exception e) {
+            // 忽略
+        }
+        return null;
+    }
+    
+    /**
+     * 从 JSON 字符串中提取整数值
+     */
+    private int extractJsonInt(String json, String key) {
+        try {
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
+                "\"" + key + "\"\\s*:\\s*(\\d+)");
+            java.util.regex.Matcher matcher = pattern.matcher(json);
+            if (matcher.find()) {
+                return Integer.parseInt(matcher.group(1));
+            }
+        } catch (Exception e) {
+            // 忽略
+        }
+        return 0;
     }
     
     /**
@@ -269,13 +442,19 @@ public class DefaultOutputFormatter implements OutputFormatter {
      */
     private String getOutputPreview(String output) {
         if (output == null || output.isEmpty()) return "";
-        
-        // 对于长输出，显示行数或长度
-        String[] lines = output.split("\n");
-        if (lines.length > 5) {
-            return AnsiStyles.DIM + lines.length + " 行输出" + AnsiStyles.RESET;
+
+        // 对于长输出（超过3行或200字符），显示摘要
+        int lineCount;
+        try {
+            lineCount = output.split("\n", -1).length;
+        } catch (Exception e) {
+            lineCount = 0;
         }
-        
+
+        if (lineCount > 3 || output.length() > 200) {
+            return AnsiStyles.DIM + lineCount + " 行" + AnsiStyles.RESET;
+        }
+
         // 对于短输出，显示内容预览
         return AnsiStyles.DIM + truncate(output.replace("\n", " "), 30) + AnsiStyles.RESET;
     }

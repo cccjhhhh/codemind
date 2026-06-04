@@ -1,10 +1,36 @@
 # Skill 系统重新设计
 
 > 日期：2026-06-04
-> 状态：待评审
-> 决定人：[用户]
+> 状态：✅ **已实现**
+> 实现日期：2026-06-04
 
-## 1. 背景与问题
+## 实现摘要
+
+本设计已成功实现，主要组件：
+
+| 组件 | 文件 | 状态 |
+|------|------|------|
+| 关键词路由 | `KeywordSkillRouter.java` | ✅ |
+| 语义路由 | `SemanticSkillRouter.java` | ✅ |
+| 路由结果 | `SkillRoute.java` (含 confidence) | ✅ |
+| 路由原因 | `RouteReason.java` (扩展枚举) | ✅ |
+| Skill 定义 | `SkillDefinition.java` | ✅ |
+| Skill 加载器 | `SkillLoader.java` | ✅ |
+| AgentLoop 集成 | `AgentLoop.java` (硬路由逻辑) | ✅ |
+
+## 实际架构（与设计差异说明）
+
+设计时计划单一 `SkillRouter` 类，实现时拆分为两个路由器：
+
+```
+SkillRouter (接口)
+    ├── KeywordSkillRouter（Tier 2 - 关键词硬路由）
+    └── SemanticSkillRouter（Tier 3 - 语义路由，内含 KeywordSkillRouter 降级）
+```
+
+**原因**：职责分离更清晰，便于测试和维护
+
+---
 
 ### 1.1 当前问题
 
