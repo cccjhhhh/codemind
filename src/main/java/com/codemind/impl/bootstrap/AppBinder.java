@@ -2,10 +2,12 @@ package com.codemind.impl.bootstrap;
 
 import com.codemind.api.llm.LLMClient;
 import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionManager;
 import com.codemind.api.skill.SkillExecutor;
 import com.codemind.api.skill.SkillRegistry;
 import com.codemind.api.tool.ToolRegistry;
+import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.skill.*;
@@ -36,13 +38,24 @@ import java.util.List;
 public class AppBinder {
     
     /**
-     * 创建权限网关
+     * 创建权限网关（推荐方式）
+     * 
+     * @param confirmDangerous 是否需要确认危险操作
+     * @param permissionPrompter 权限询问器（用于用户交互）
+     * @return PermissionGate 实例
+     */
+    public PermissionGate createPermissionGate(boolean confirmDangerous, PermissionPrompter permissionPrompter) {
+        return new PermissionGateImpl(confirmDangerous, permissionPrompter);
+    }
+    
+    /**
+     * 创建权限网关（使用 CLI 权限询问器）
      * 
      * @param confirmDangerous 是否需要确认危险操作
      * @return PermissionGate 实例
      */
     public PermissionGate createPermissionGate(boolean confirmDangerous) {
-        return new PermissionGateImpl(confirmDangerous);
+        return new PermissionGateImpl(confirmDangerous, new CLIPermissionPrompter());
     }
     
     /**

@@ -67,14 +67,18 @@ public class Message {
     /**
      * 创建 Skill 结果消息
      * 
+     * 注意：Skill 结果不是真正的工具调用响应（没有 tool_call_id），
+     * 因此使用 ASSISTANT 角色而不是 TOOL 角色。
+     * TOOL 角色需要有效的 tool_call_id，OpenAI API 会拒绝 null 值。
+     * 
      * @param result Skill 执行结果
      * @return 消息
      */
     public static Message skillResult(SkillResult result) {
         String content = result.isSuccess() 
-            ? "Skill Result:\n" + result.getOutput()
-            : "Skill Error: " + result.getError();
-        return new Message(Role.TOOL, content);
+            ? "Skill 执行结果:\n" + result.getOutput()
+            : "Skill 执行失败: " + result.getError();
+        return new Message(Role.ASSISTANT, content);
     }
     
     // ========== Getter 方法 ==========

@@ -1,7 +1,9 @@
 package com.codemind.impl.safety;
 
 import com.codemind.api.safety.Permission;
+import com.codemind.api.safety.PermissionDecision;
 import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.safety.PermissionPrompter;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -15,21 +17,56 @@ import java.util.Set;
  * 设计原则：依赖倒置原则（DIP）
  * - 此类实现 PermissionGate 接口
  * - 高层模块通过接口使用，不直接依赖此类
+ * - PermissionPrompter 通过构造器注入
  */
 public class PermissionGateImpl implements PermissionGate {
     
     private final Set<String> allowedCommands;
     private final boolean confirmDangerousOperations;
+    private final PermissionPrompter permissionPrompter;
     private final Set<Permission> sessionPermissions = new HashSet<>();
     private final Set<Permission> allowedPermissions = new HashSet<>();
     
+    /**
+     * 完整构造器
+     * 
+     * @param allowedCommands 命令白名单
+     * @param confirmDangerousOperations 是否确认危险操作
+     * @param permissionPrompter 权限询问器（用于用户交互）
+     */
+    public PermissionGateImpl(Set<String> allowedCommands, boolean confirmDangerousOperations, PermissionPrompter permissionPrompter) {
+        this.allowedCommands = allowedCommands;
+        this.confirmDangerousOperations = confirmDangerousOperations;
+        this.permissionPrompter = permissionPrompter;
+    }
+    
+    /**
+     * 简化构造器（无命令白名单）
+     */
+    public PermissionGateImpl(boolean confirmDangerousOperations, PermissionPrompter permissionPrompter) {
+        this(Set.of(), confirmDangerousOperations, permissionPrompter);
+    }
+    
+    /**
+     * 向后兼容构造器（无用户交互，自动拒绝危险操作）
+     * 
+     * @deprecated 建议使用带 PermissionPrompter 的构造器
+     */
+    @Deprecated
     public PermissionGateImpl(Set<String> allowedCommands, boolean confirmDangerousOperations) {
         this.allowedCommands = allowedCommands;
         this.confirmDangerousOperations = confirmDangerousOperations;
+        this.permissionPrompter = null;
     }
     
+    /**
+     * 向后兼容构造器
+     * 
+     * @deprecated 建议使用带 PermissionPrompter 的构造器
+     */
+    @Deprecated
     public PermissionGateImpl(boolean confirmDangerousOperations) {
-        this(Set.of(), confirmDangerousOperations);
+        this(Set.of(), confirmDangerousOperations, null);
     }
     
     @Override
@@ -79,12 +116,36 @@ public class PermissionGateImpl implements PermissionGate {
     }
     
     /**
-     * 请求权限（对于需要确认的操作）
+     * 请求用户授权
+     * 
+     * 通过 PermissionPrompter 与用户交互，获取授权决策。
+     * 
+     * 决策处理：
+     * - ALLOW_SESSION: 自动授予会话权限，下次无需确认
+     * - ALLOW: 仅允许本次操作
+     * - DENY: 拒绝操作
      */
+    @Override
     public boolean requestPermission(Permission permission, String context) {
-        // TODO: 实现用户交互确认
-        // 在 CLI 模式下，应该询问用户
-        return isAllowed(permission);
+        // 如果没有配置权限询问器（向后兼容），使用 isAllowed 判断
+        if (permissionPrompter == null) {
+            return isAllowed(permission);
+        }
+        
+        // 获取用户决策
+        PermissionDecision decision = permissionPrompter.prompt(permission, context);
+        
+        switch (decision) {
+            case ALLOW_SESSION:
+                // 授予会话权限，下次无需确认
+                grantSessionPermission(permission);
+                return true;
+            case ALLOW:
+                return true;
+            case DENY:
+            default:
+                return false;
+        }
     }
     
     @Override

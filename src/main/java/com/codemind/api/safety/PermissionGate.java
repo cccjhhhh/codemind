@@ -64,4 +64,19 @@ public interface PermissionGate {
      * @throws SecurityException 如果权限不足
      */
     void enforcePermission(Permission permission, String context);
+    
+    /**
+     * 请求用户授权
+     * 
+     * 对于需要确认的操作，通过用户交互获取授权决策。
+     * 返回的决策会被自动处理：
+     * - ALLOW_SESSION: 自动授予会话权限
+     * - ALLOW: 仅本次允许
+     * - DENY: 拒绝操作
+     * 
+     * @param permission 要请求的权限
+     * @param context 操作上下文（如工具名、参数摘要）
+     * @return true 如果用户授权，false 如果拒绝
+     */
+    boolean requestPermission(Permission permission, String context);
 }
