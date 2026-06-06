@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import okhttp3.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -25,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class OpenAIClient implements LLMClient {
     
+    private static final Logger log = LoggerFactory.getLogger(OpenAIClient.class);
     private static final MediaType JSON_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final ObjectMapper MAPPER = new ObjectMapper();
     
@@ -359,15 +362,24 @@ public class OpenAIClient implements LLMClient {
      */
     private String buildMessagesJson(List<Message> messages) throws Exception {
         ArrayNode array = MAPPER.createArrayNode();
+        boolean seenAssistantWithTools = false;
         for (Message msg : messages) {
             ObjectNode node = array.addObject();
-            node.put("role", msg.getRole().name().toLowerCase());
-            
+            String role = msg.getRole().name().toLowerCase();
+            node.put("role", role);
+
             // TOOL 角色需要 tool_call_id 字段
             if (msg.getRole() == Message.Role.TOOL) {
-                node.put("tool_call_id", msg.getToolCallId());
+                String toolCallId = msg.getToolCallId();
+                if (toolCallId == null) {
+                    log.warn("TOOL message with null tool_call_id, content length: {}",
+                        msg.getContent() != null ? msg.getContent().length() : 0);
+                    toolCallId = "null_tool_call_id";
+                }
+                node.put("tool_call_id", toolCallId);
+                seenAssistantWithTools = false;
             }
-            
+
             // ASSISTANT 角色可能有 tool_calls
             if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
                 ArrayNode toolCallsArray = node.putArray("tool_calls");
@@ -379,16 +391,22 @@ public class OpenAIClient implements LLMClient {
                     funcNode.put("name", tc.getName());
                     funcNode.put("arguments", MAPPER.writeValueAsString(tc.getArguments()));
                 }
+                seenAssistantWithTools = true;
             }
-            
-            // content 字段 - API 要求必须存在，即使是空字符串
-            String content = msg.getContent();
-            if (content == null) {
-                content = "";
+
+            // content 字段：Assistant 带 tool_calls 时设为 null（部分 API 要求），否则可为空字符串
+            if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
+                node.putNull("content");
+            } else {
+                String content = msg.getContent();
+                node.put("content", content != null ? content : "");
             }
-            node.put("content", content);
         }
-        return MAPPER.writeValueAsString(array);
+        String result = MAPPER.writeValueAsString(array);
+        if (log.isDebugEnabled()) {
+            log.debug("Messages JSON (first 500 chars): {}", result.substring(0, Math.min(500, result.length())));
+        }
+        return result;
     }
     
     /**
