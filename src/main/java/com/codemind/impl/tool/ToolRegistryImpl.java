@@ -1,61 +1,58 @@
 package com.codemind.impl.tool;
 
 import com.codemind.api.llm.ToolDefinition;
-import com.codemind.api.safety.Permission;
 import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.safety.PermissionGateImpl;
 
 import java.util.*;
 
 /**
  * 工具注册中心实现
- * 
+ *
  * 管理所有可用工具的定义和执行。
  * 学习要点：工具注册与发现、参数验证、执行调度、权限控制
  */
 public class ToolRegistryImpl implements ToolRegistry {
-    
-    /** 工具名称到权限的映射 */
-    private static final Map<String, Permission> TOOL_PERMISSIONS = Map.of(
-        "read_file", Permission.READ_FILE,
-        "write_file", Permission.WRITE_FILE,
-        "execute_command", Permission.EXECUTE_COMMAND,
-        "search_code", Permission.READ_FILE,
-        "parse_logs", Permission.READ_FILE
-    );
-    
+
+    /** 工具名称到工具实例的映射 */
     private final Map<String, Tool> tools = new HashMap<>();
+    /** 废弃名称到主名称的映射（用于向后兼容） */
+    private final Map<String, String> deprecatedToCanonical = new HashMap<>();
+
     private final PermissionGate permissionGate;
-    
-    public ToolRegistryImpl() {
-        this.permissionGate = new PermissionGateImpl(true); // 默认需要确认危险操作
-    }
-    
+
     public ToolRegistryImpl(PermissionGate permissionGate) {
         this.permissionGate = permissionGate;
     }
-    
+
     @Override
     public void register(Tool tool) {
+        // 注册主名称
         tools.put(tool.getName(), tool);
+
+        // 注册 deprecated alias
+        tool.getDeprecatedName().ifPresent(deprecatedName -> {
+            deprecatedToCanonical.put(deprecatedName, tool.getName());
+            tools.put(deprecatedName, tool);  // 同时用旧名注册，方便查找
+        });
     }
-    
+
     @Override
     public void unregister(String name) {
         tools.remove(name);
     }
-    
+
     @Override
     public Tool get(String name) {
         return tools.get(name);
     }
-    
+
     @Override
     public ToolDefinition getDefinition(String name) {
-        Tool tool = tools.get(name);
+        Tool tool = resolveTool(name);
         if (tool == null) {
             return null;
         }
@@ -65,78 +62,66 @@ public class ToolRegistryImpl implements ToolRegistry {
             tool.getInputSchema()
         );
     }
-    
+
+    /**
+     * 解析工具名称，支持 deprecated alias
+     */
+    private Tool resolveTool(String name) {
+        Tool tool = tools.get(name);
+        if (tool != null) {
+            return tool;
+        }
+        // 尝试通过 deprecated 映射解析
+        String canonicalName = deprecatedToCanonical.get(name);
+        return canonicalName != null ? tools.get(canonicalName) : null;
+    }
+
     @Override
     public List<ToolDefinition> getAllDefinitions() {
+        // 只返回主名称的工具定义（去重）
         return tools.values().stream()
+            .filter(t -> !deprecatedToCanonical.containsValue(t.getName()) ||
+                         deprecatedToCanonical.containsValue(t.getName()))  // 去重逻辑
+            .distinct()
             .map(t -> new ToolDefinition(t.getName(), t.getDescription(), t.getInputSchema()))
             .toList();
     }
-    
+
     @Override
     public ToolResult execute(String name, Map<String, Object> params) {
         Tool tool = tools.get(name);
         if (tool == null) {
             return ToolResult.failure("Tool not found: " + name);
         }
-        
-        // 检查是否需要权限确认
-        Permission permission = TOOL_PERMISSIONS.get(name);
-        if (permission != null && permissionGate.needsConfirmation(permission)) {
-            return ToolResult.needsConfirmation(permission);
+
+        // 使用新的权限模型
+        PermissionLevel level = tool.getDefaultPermission();
+        if (level == PermissionLevel.DENY) {
+            return ToolResult.failure("Tool " + tool.getName() + " is denied by default");
         }
-        
+
+        if (level == PermissionLevel.ASK) {
+            if (permissionGate != null) {
+                boolean granted = permissionGate.requestPermission(name,
+                    "工具 " + name + " 请求执行: " + params);
+                if (!granted) {
+                    return ToolResult.failure("用户拒绝授权: " + name);
+                }
+            }
+        }
+
         try {
             return tool.execute(params);
         } catch (Exception e) {
             return ToolResult.failure("Tool execution failed: " + e.getMessage());
         }
     }
-    
+
     @Override
     public boolean hasTool(String name) {
-        return tools.containsKey(name);
+        return resolveTool(name) != null;
     }
-    
-    /**
-     * 检查工具执行是否需要用户确认
-     */
-    public boolean requiresConfirmation(String toolName) {
-        Permission permission = TOOL_PERMISSIONS.get(toolName);
-        if (permission == null) {
-            return false;
-        }
-        return permissionGate.needsConfirmation(permission);
-    }
-    
-    /**
-     * 授予工具执行权限（添加到白名单）
-     */
-    public void grantPermission(Permission permission) {
-        permissionGate.allow(permission);
-    }
-    
-    /**
-     * 撤销工具执行权限
-     */
-    public void revokePermission(Permission permission) {
-        permissionGate.disallow(permission);
-    }
-    
-    /**
-     * 获取权限 Gate（用于 CLI 询问用户）
-     */
-    public PermissionGate getPermissionGate() {
-        return permissionGate;
-    }
-    
-    /**
-     * 获取某个工具需要的权限
-     */
-    public Permission getToolPermission(String toolName) {
-        return TOOL_PERMISSIONS.get(toolName);
-    }
-    
+
     /**
      * 获取所有工具名称
      */

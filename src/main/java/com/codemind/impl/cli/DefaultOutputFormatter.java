@@ -1,7 +1,6 @@
 package com.codemind.impl.cli;
 
 import com.codemind.api.cli.OutputFormatter;
-import com.codemind.api.safety.Permission;
 import com.codemind.api.tool.ToolResult;
 
 import java.util.Map;
@@ -96,16 +95,16 @@ public class DefaultOutputFormatter implements OutputFormatter {
     }
     
     @Override
-    public String formatPermissionPrompt(Permission permission, String context) {
+    public String formatPermissionPrompt(String toolName, String context) {
         StringBuilder sb = new StringBuilder();
-        
+
         sb.append("\n")
           .append(AnsiStyles.BG_YELLOW).append(AnsiStyles.BLACK).append(" ⚠️  需要权限确认 ").append(AnsiStyles.RESET)
           .append("\n")
           .append(AnsiStyles.DIM).append("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━").append(AnsiStyles.RESET)
           .append("\n")
           .append(AnsiStyles.BOLD).append("操作: ").append(AnsiStyles.RESET)
-          .append(permission.getDescription())
+          .append("工具: ").append(toolName)
           .append("\n")
           .append(AnsiStyles.BOLD).append("上下文: ").append(AnsiStyles.RESET)
           .append(AnsiStyles.DIM).append(context).append(AnsiStyles.RESET)
@@ -115,7 +114,7 @@ public class DefaultOutputFormatter implements OutputFormatter {
           .append("是否允许? ")
           .append(AnsiStyles.BOLD).append("[y/n/session]").append(AnsiStyles.RESET)
           .append(": ");
-        
+
         return sb.toString();
     }
     
@@ -151,18 +150,20 @@ public class DefaultOutputFormatter implements OutputFormatter {
     
     @Override
     public String formatThinkingStart() {
-        return "\n" + AnsiStyles.DIM + THINKING_TEXT + "..." + AnsiStyles.RESET + "\n";
+        // 不显示 Thinking 指示器
+        return "";
     }
     
     @Override
     public String formatThinkingEnd() {
-        // 清除当前行
-        return "\r" + AnsiStyles.CLEAR_LINE;
+        // 不显示
+        return "";
     }
     
     @Override
     public String formatThinkingContent(String content) {
-        return AnsiStyles.DIM + "  ∴ " + content + AnsiStyles.RESET + "\n";
+        // 不显示思考内容
+        return "";
     }
     
     @Override
@@ -229,42 +230,6 @@ public class DefaultOutputFormatter implements OutputFormatter {
         return AnsiStyles.CLEAR_LINE + 
                AnsiStyles.DIM + "   ↳ " + AnsiStyles.RESET +
                AnsiStyles.CYAN + stage + AnsiStyles.RESET + "...\n";
-    }
-    
-    /**
-     * 格式化 Skill 结果
-     */
-    @Override
-    public String formatSkillEnd(com.codemind.api.skill.SkillResult result) {
-        StringBuilder sb = new StringBuilder();
-        if (result.isSuccess()) {
-            sb.append("\n")
-              .append(AnsiStyles.GREEN).append("✅ Skill 执行成功").append(AnsiStyles.RESET)
-              .append("\n");
-            
-            String output = result.getOutput();
-            if (output != null && !output.isEmpty()) {
-                // 检查是否是 JSON 格式
-                if (output.startsWith("{")) {
-                    // JSON 输出：提取关键信息，不打印完整 JSON
-                    sb.append(formatJsonOutput(output));
-                } else if (output.length() > 100) {
-                    // 长文本：只显示摘要
-                    sb.append(AnsiStyles.DIM).append(truncate(output, 100)).append(AnsiStyles.RESET)
-                      .append(AnsiStyles.DIM).append("... (共 ").append(output.length()).append(" 字符)").append(AnsiStyles.RESET);
-                } else {
-                    sb.append(output);
-                }
-            }
-            sb.append("\n");
-        } else {
-            sb.append("\n")
-              .append(AnsiStyles.RED).append("❌ Skill 执行失败").append(AnsiStyles.RESET)
-              .append("\n")
-              .append(AnsiStyles.RED).append(result.getError()).append(AnsiStyles.RESET)
-              .append("\n");
-        }
-        return sb.toString();
     }
     
     /**

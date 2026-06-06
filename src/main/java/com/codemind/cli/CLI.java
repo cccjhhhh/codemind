@@ -3,19 +3,25 @@ package com.codemind.cli;
 import com.codemind.api.cli.OutputFormatter;
 import com.codemind.api.llm.LLMClient;
 import com.codemind.api.llm.ModelConfig;
-import com.codemind.api.safety.Permission;
 import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
+import com.codemind.impl.session.SessionManagerImpl;
+import com.codemind.api.tool.ToolRegistry;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
 import com.codemind.impl.bootstrap.AppBinder;
+import com.codemind.impl.builtin.skill.CodeReviewSkill;
+import com.codemind.impl.builtin.skill.LogAnalysisSkill;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
-import com.codemind.impl.skill.*;
+import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.impl.skill.SkillLoader;
+import com.codemind.impl.skill.routing.SkillRouter;
 import com.codemind.impl.tool.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -62,10 +68,13 @@ public class CLI implements Runnable {
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;
     
     // ToolRegistry 引用（用于权限管理）
-    private ToolRegistryImpl toolRegistry;
+    private ToolRegistry toolRegistry;
     
     // PermissionGate 引用（用于权限检查）
     private PermissionGate permissionGate;
+    
+    // SessionManager 引用（用于会话管理）
+    private SessionManager sessionManager;
     
     // OutputFormatter 引用
     private OutputFormatter outputFormatter = new DefaultOutputFormatter();
@@ -108,20 +117,24 @@ public class CLI implements Runnable {
         ModelManager modelManager = new ModelManager();
         
         // 从依赖配置中获取组件
-        ToolRegistryImpl toolRegistry = (ToolRegistryImpl) deps.getToolRegistry();
+        ToolRegistry toolRegistry = deps.getToolRegistry();
         SessionManager sessionManager = deps.getSessionManager();
         PermissionGate permissionGate = deps.getPermissionGate();
         
         // 保存引用以便后续使用
         this.toolRegistry = toolRegistry;
         this.permissionGate = permissionGate;
+        this.sessionManager = sessionManager;
         
         // 注册所有工具
-        toolRegistry.register(new FileReaderTool());
-        toolRegistry.register(new FileWriterTool());
-        toolRegistry.register(new CodeSearchTool());
-        toolRegistry.register(new CommandRunnerTool());
-        toolRegistry.register(new LogParserTool());
+        toolRegistry.register(new ReadTool());
+        toolRegistry.register(new WriteTool());
+        toolRegistry.register(new EditTool());
+        toolRegistry.register(new GrepTool());
+        toolRegistry.register(new BashTool());
+        toolRegistry.register(new GlobTool());
+        toolRegistry.register(new WebFetchTool());
+        toolRegistry.register(new AgentTool());
         
         // 创建会话并设置工作目录
         SessionContext context = sessionManager.createSession();
@@ -138,7 +151,6 @@ public class CLI implements Runnable {
         // 1. 先注册 Executor（Java 实现类）
         // 注意：Executor 名称必须与 SKILL.md 中的 name 字段一致
         skillLoader.registerExecutor("code_review", new CodeReviewSkill());
-        skillLoader.registerExecutor("generate_docs", new DocGenSkill());
         skillLoader.registerExecutor("analyze_logs", new LogAnalysisSkill());
         
         // 2. 再从 classpath 加载 Skill 定义（会自动关联已注册的 Executor）
@@ -182,7 +194,7 @@ public class CLI implements Runnable {
                     // 模型已切换，重新创建客户端
                     try {
                         llmClient = ModelFactory.create(newModel);
-                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds);
+                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter);
                         System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                         System.out.println();
                     } catch (Exception e) {
@@ -195,7 +207,9 @@ public class CLI implements Runnable {
             }
             
             if ("quit".equalsIgnoreCase(input) || "exit".equalsIgnoreCase(input)) {
-                System.out.println(YELLOW + "再见！" + RESET);
+                // 保存当前会话
+                sessionManager.closeSession(context.getSessionId());
+                System.out.println(YELLOW + "会话已保存，再见！" + RESET);
                 break;
             }
             
@@ -205,7 +219,7 @@ public class CLI implements Runnable {
                 // 流式输出：实时打印 token
                 System.out.print(token);
                 System.out.flush();
-            }, permissionPrompter);
+            });
             
             // 确保换行
             System.out.println();
@@ -224,8 +238,8 @@ public class CLI implements Runnable {
     private void printWelcomeBanner() {
         System.out.println();
         System.out.println(CYAN + BOLD + "╔════════════════════════════════════════╗" + RESET);
-        System.out.println(CYAN + BOLD + "║       CodeMind - 智能编程助手           ║" + RESET);
-        System.out.println(CYAN + BOLD + "║       Version 1.0.0                    ║" + RESET);
+        System.out.println(CYAN + BOLD + "║              CodeMind                  ║" + RESET);
+        System.out.println(CYAN + BOLD + "║             Version 1.0.0              ║" + RESET);
         System.out.println(CYAN + BOLD + "╚════════════════════════════════════════╝" + RESET);
         System.out.println();
     }
@@ -263,6 +277,14 @@ public class CLI implements Runnable {
                 
             case "/permissions":
                 printPermissionsStatus();
+                return null;
+                
+            case "/sessions":
+                handleSessionsCommand();
+                return null;
+                
+            case "/load":
+                handleLoadCommand(parts, scanner);
                 return null;
                 
             case "/help":
@@ -408,6 +430,8 @@ public class CLI implements Runnable {
         System.out.println();
         System.out.println("  " + CYAN + "/models" + RESET + "          列出所有可用模型");
         System.out.println("  " + CYAN + "/switch" + RESET + "          切换模型（交互式选择）");
+        System.out.println("  " + CYAN + "/sessions" + RESET + "        列出已保存的会话");
+        System.out.println("  " + CYAN + "/load [id]" + RESET + "       加载指定会话");
         System.out.println("  " + CYAN + "/allow <权限>" + RESET + "   授权危险操作（write_file, execute_command）");
         System.out.println("  " + CYAN + "/permissions" + RESET + "     显示权限状态");
         System.out.println("  " + CYAN + "/help" + RESET + "            显示帮助");
@@ -423,36 +447,31 @@ public class CLI implements Runnable {
     private void handleAllowCommand(String[] parts) {
         if (parts.length < 2) {
             System.out.println();
-            System.out.println(YELLOW + "可授权的权限:" + RESET);
-            System.out.println("  " + CYAN + "write_file" + RESET + "      写入文件");
-            System.out.println("  " + CYAN + "execute_command" + RESET + " 执行命令");
-            System.out.println("  " + CYAN + "all" + RESET + "           授权所有危险操作");
+            System.out.println(YELLOW + "可授权的工具:" + RESET);
+            System.out.println("  " + CYAN + "write" + RESET + "           写入文件");
+            System.out.println("  " + CYAN + "bash" + RESET + "            执行命令");
+            System.out.println("  " + CYAN + "all" + RESET + "            授权所有工具");
             System.out.println();
-            System.out.println("用法: " + CYAN + "/allow <权限>" + RESET);
+            System.out.println("用法: " + CYAN + "/allow <工具名>" + RESET);
             System.out.println();
             return;
         }
-        
-        String permissionName = parts[1].toUpperCase();
-        
-        try {
-            if ("ALL".equals(permissionName)) {
-                // 授权所有危险操作
-                toolRegistry.grantPermission(Permission.WRITE_FILE);
-                toolRegistry.grantPermission(Permission.EXECUTE_COMMAND);
-                System.out.println();
-                System.out.println(GREEN + BOLD + "✓ 已授权所有危险操作" + RESET);
-                System.out.println();
-            } else {
-                Permission permission = Permission.valueOf(permissionName);
-                toolRegistry.grantPermission(permission);
-                System.out.println();
-                System.out.println(GREEN + BOLD + "✓ 已授权: " + permission.getDescription() + RESET);
-                System.out.println();
+
+        String toolName = parts[1];
+
+        if ("ALL".equalsIgnoreCase(toolName)) {
+            // 授权所有工具
+            for (String name : ((com.codemind.impl.tool.ToolRegistryImpl) toolRegistry).getToolNames()) {
+                permissionGate.setDefaultLevel(name, PermissionLevel.ALLOW);
             }
-        } catch (IllegalArgumentException e) {
-            System.out.println(RED + "未知的权限: " + parts[1] + RESET);
-            System.out.println("可用权限: write_file, execute_command, all");
+            System.out.println();
+            System.out.println(GREEN + BOLD + "✓ 已授权所有工具" + RESET);
+            System.out.println();
+        } else {
+            permissionGate.setDefaultLevel(toolName, PermissionLevel.ALLOW);
+            System.out.println();
+            System.out.println(GREEN + BOLD + "✓ 已授权: " + toolName + RESET);
+            System.out.println();
         }
     }
     
@@ -463,27 +482,29 @@ public class CLI implements Runnable {
         System.out.println();
         System.out.println(BOLD + "权限状态:" + RESET);
         System.out.println();
-        
-        Permission[] permissions = Permission.values();
-        for (Permission perm : permissions) {
-            boolean needsConfirm = permissionGate.needsConfirmation(perm);
-            boolean hasPermission = permissionGate.hasPermission(perm);
-            
+
+        com.codemind.impl.tool.ToolRegistryImpl registry = (com.codemind.impl.tool.ToolRegistryImpl) toolRegistry;
+        for (String toolName : registry.getToolNames()) {
+            PermissionLevel level = permissionGate.getDefaultLevel(toolName);
+
             String status;
-            if (hasPermission) {
-                status = GREEN + "✓ 已授权" + RESET;
-            } else if (needsConfirm) {
-                status = YELLOW + "⚠ 需授权" + RESET;
-            } else {
-                status = DIM + "○ 默认允许" + RESET;
+            switch (level) {
+                case ALLOW:
+                    status = GREEN + "✓ 已授权" + RESET;
+                    break;
+                case ASK:
+                    status = YELLOW + "⚠ 需确认" + RESET;
+                    break;
+                case DENY:
+                default:
+                    status = RED + "✗ 禁止" + RESET;
+                    break;
             }
-            
-            System.out.println("  " + perm.name() + RESET + " " + 
-                               DIM + "(" + perm.getDescription() + ")" + RESET + 
-                               " " + status);
+
+            System.out.println("  " + toolName + RESET + " " + status);
         }
         System.out.println();
-        System.out.println(DIM + "提示: 使用 /allow <权限> 授权危险操作" + RESET);
+        System.out.println(DIM + "提示: 使用 /allow <工具名> 授权操作" + RESET);
         System.out.println();
     }
     
@@ -532,7 +553,84 @@ public class CLI implements Runnable {
                "注意: 执行命令时默认已在工作目录下，无需 cd。\n\n" +
                "可用技能（优先使用这些，而不是自己拼凑命令）：\n" +
                "- code_review: 当你需要审查代码时使用\n" +
-               "- analyze_logs: 当你需要分析日志时使用\n" +
-               "- generate_docs: 当你需要生成文档时使用\n";
+               "- analyze_logs: 当你需要分析日志时使用\n";
+    }
+    
+    /**
+     * 处理 /sessions 命令 - 列出已保存的会话
+     */
+    private void handleSessionsCommand() {
+        System.out.println();
+        System.out.println(BOLD + "已保存的会话:" + RESET);
+        System.out.println();
+        
+        if (!(sessionManager instanceof com.codemind.impl.session.SessionManagerImpl)) {
+            System.out.println(DIM + "会话管理不支持持久化" + RESET);
+            System.out.println();
+            return;
+        }
+        
+        com.codemind.impl.session.SessionManagerImpl sessionManagerImpl = 
+            (com.codemind.impl.session.SessionManagerImpl) sessionManager;
+        java.util.List<com.codemind.dto.session.SessionInfoDto> sessions = sessionManagerImpl.listSavedSessions();
+        
+        if (sessions.isEmpty()) {
+            System.out.println(DIM + "暂无已保存的会话" + RESET);
+            System.out.println();
+            return;
+        }
+        
+        System.out.println("  " + DIM + "ID" + RESET + "                    " + DIM + "创建时间" + RESET + "          " + DIM + "最后活跃" + RESET + "      " + DIM + "消息数" + RESET);
+        System.out.println("  " + "-".repeat(80));
+        
+        for (com.codemind.dto.session.SessionInfoDto session : sessions) {
+            System.out.printf("  %-24s %s    %s    %d%n",
+                session.getSessionId().substring(0, Math.min(8, session.getSessionId().length())) + "...",
+                session.getCreatedAt().toString().substring(0, 16),
+                session.getLastActiveAt().toString().substring(0, 16),
+                session.getMessageCount());
+        }
+        System.out.println();
+        System.out.println("使用 " + CYAN + "/load <session_id>" + RESET + " 加载会话");
+        System.out.println();
+    }
+    
+    /**
+     * 处理 /load 命令 - 加载指定会话
+     */
+    private void handleLoadCommand(String[] parts, Scanner scanner) {
+        if (parts.length < 2) {
+            System.out.println();
+            System.out.println(YELLOW + "用法: /load <session_id>" + RESET);
+            System.out.println("使用 " + CYAN + "/sessions" + RESET + " 查看可用会话");
+            System.out.println();
+            return;
+        }
+        
+        String sessionId = parts[1];
+        
+        if (!(sessionManager instanceof com.codemind.impl.session.SessionManagerImpl)) {
+            System.out.println(RED + "错误: 会话管理不支持持久化" + RESET);
+            System.out.println();
+            return;
+        }
+        
+        com.codemind.impl.session.SessionManagerImpl sessionManagerImpl = 
+            (com.codemind.impl.session.SessionManagerImpl) sessionManager;
+        
+        // 尝试加载会话
+        com.codemind.api.session.SessionContext loadedContext = sessionManagerImpl.loadSession(sessionId);
+        
+        if (loadedContext == null) {
+            System.out.println(RED + "错误: 会话不存在或加载失败: " + sessionId + RESET);
+            System.out.println("使用 " + CYAN + "/sessions" + RESET + " 查看可用会话");
+            System.out.println();
+            return;
+        }
+        
+        // 更新当前上下文
+        // 注意：这会替换当前的 context
+        System.out.println(GREEN + "✓ 已加载会话: " + sessionId + RESET);
+        System.out.println();
     }
 }

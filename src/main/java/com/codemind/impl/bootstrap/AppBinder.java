@@ -7,10 +7,15 @@ import com.codemind.api.session.SessionManager;
 import com.codemind.api.skill.SkillExecutor;
 import com.codemind.api.skill.SkillRegistry;
 import com.codemind.api.tool.ToolRegistry;
+import com.codemind.impl.builtin.skill.CodeReviewSkill;
+import com.codemind.impl.builtin.skill.LogAnalysisSkill;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.session.SessionManagerImpl;
-import com.codemind.impl.skill.*;
+import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.impl.skill.SkillLoader;
+import com.codemind.impl.skill.SkillRegistryImpl;
+import com.codemind.impl.skill.routing.SkillRouter;
 import com.codemind.impl.tool.ToolRegistryImpl;
 
 import java.io.IOException;
@@ -39,23 +44,21 @@ public class AppBinder {
     
     /**
      * 创建权限网关（推荐方式）
-     * 
-     * @param confirmDangerous 是否需要确认危险操作
+     *
      * @param permissionPrompter 权限询问器（用于用户交互）
      * @return PermissionGate 实例
      */
-    public PermissionGate createPermissionGate(boolean confirmDangerous, PermissionPrompter permissionPrompter) {
-        return new PermissionGateImpl(confirmDangerous, permissionPrompter);
+    public PermissionGate createPermissionGate(PermissionPrompter permissionPrompter) {
+        return new PermissionGateImpl(permissionPrompter);
     }
-    
+
     /**
      * 创建权限网关（使用 CLI 权限询问器）
-     * 
-     * @param confirmDangerous 是否需要确认危险操作
+     *
      * @return PermissionGate 实例
      */
-    public PermissionGate createPermissionGate(boolean confirmDangerous) {
-        return new PermissionGateImpl(confirmDangerous, new CLIPermissionPrompter());
+    public PermissionGate createPermissionGate() {
+        return new PermissionGateImpl(new CLIPermissionPrompter());
     }
     
     /**
@@ -79,7 +82,7 @@ public class AppBinder {
      * @return 配置好的 ToolRegistry 实例
      */
     public ToolRegistry createToolRegistry() {
-        return createToolRegistry(createPermissionGate(true));
+        return createToolRegistry(createPermissionGate());
     }
     
     /**
@@ -110,7 +113,6 @@ public class AppBinder {
         // 2. 注册 Executor（匹配定义中的名称）
         // 注意：Executor 名称需与 SKILL.md 中的 name 字段一致
         skillLoader.registerExecutor("code_review", new CodeReviewSkill());
-        skillLoader.registerExecutor("generate_docs", new DocGenSkill());
         skillLoader.registerExecutor("analyze_logs", new LogAnalysisSkill());
     }
     
@@ -190,7 +192,7 @@ public class AppBinder {
      */
     public AppDependencies createDependencies() {
         // 按依赖顺序创建
-        PermissionGate permissionGate = createPermissionGate(true);
+        PermissionGate permissionGate = createPermissionGate();
         ToolRegistry toolRegistry = createToolRegistry(permissionGate);
         SkillRegistry skillRegistry = createSkillRegistry(toolRegistry);
         SessionManager sessionManager = createSessionManager();
