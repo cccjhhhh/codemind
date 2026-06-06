@@ -403,6 +403,16 @@ public class OpenAIClient implements LLMClient {
             }
         }
         String result = MAPPER.writeValueAsString(array);
+        // 记录消息角色序列，用于调试 TOOL/ASSISTANT 配对问题
+        StringBuilder roles = new StringBuilder();
+        for (Message msg : messages) {
+            if (roles.length() > 0) roles.append(" → ");
+            roles.append(msg.getRole().name());
+            if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
+                roles.append("(").append(msg.getToolCalls().size()).append(" tools)");
+            }
+        }
+        log.info("消息序列: {} (共{}条)", roles, messages.size());
         if (log.isDebugEnabled()) {
             log.debug("Messages JSON (first 500 chars): {}", result.substring(0, Math.min(500, result.length())));
         }
