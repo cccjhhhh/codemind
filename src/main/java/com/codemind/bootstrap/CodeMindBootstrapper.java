@@ -68,7 +68,7 @@ public class CodeMindBootstrapper {
             50, 300, skillRouter, promptBuilder
         );
 
-        return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry, permissionGate);
+        return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry, permissionGate, skillRouter, promptBuilder);
     }
 
     public record BootstrapResult(
@@ -76,6 +76,8 @@ public class CodeMindBootstrapper {
         SessionContext session,
         SessionManager sessionManager,
         ToolRegistry toolRegistry,
-        PermissionGate permissionGate
+        PermissionGate permissionGate,
+        SkillRouter skillRouter,
+        SystemPromptBuilder promptBuilder
     ) {}
 }

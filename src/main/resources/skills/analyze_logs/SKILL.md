@@ -38,5 +38,5 @@ disabledKeywords:
 
 ## 依赖的 Tools
 
-- read_file
-- execute_command
+- Read
+- Bash

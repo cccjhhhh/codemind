@@ -3,7 +3,7 @@ package com.codemind.impl.session;
 import com.codemind.api.llm.Message;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
-import com.codemind.dto.session.MessageDto;
+import com.codemind.dto.session.SessionMessageDto;
 import com.codemind.dto.session.SessionInfoDto;
 import com.codemind.dto.session.SessionSnapshotDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,10 +14,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -35,8 +32,18 @@ public class SessionManagerImpl implements SessionManager {
     private final Map<String, SessionContext> sessions = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final File sessionDir;
+    private final SlidingWindowContextManager defaultContextManager;
     
     public SessionManagerImpl() {
+        this(new SlidingWindowContextManager());
+    }
+    
+    /**
+     * 依赖注入构造器
+     * 
+     * @param contextManager 默认的上下文窗口管理器
+     */
+    public SessionManagerImpl(SlidingWindowContextManager contextManager) {
         this.objectMapper = new ObjectMapper();
         this.objectMapper.registerModule(new JavaTimeModule());
         this.objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
@@ -46,6 +53,8 @@ public class SessionManagerImpl implements SessionManager {
         if (!sessionDir.exists()) {
             sessionDir.mkdirs();
         }
+        
+        this.defaultContextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
     }
     
     @Override
@@ -53,8 +62,8 @@ public class SessionManagerImpl implements SessionManager {
         String sessionId = UUID.randomUUID().toString();
         SessionContext context = new SessionContext(sessionId);
         
-        // 创建默认的上下文窗口管理器
-        context.setContextWindowManager(new SlidingWindowContextManager());
+        // 使用注入的上下文窗口管理器
+        context.setContextWindowManager(defaultContextManager);
         
         sessions.put(sessionId, context);
         return context;
@@ -69,7 +78,7 @@ public class SessionManagerImpl implements SessionManager {
     public SessionContext getOrCreateSession(String sessionId) {
         SessionContext context = sessions.computeIfAbsent(sessionId, id -> {
             SessionContext newContext = new SessionContext(id);
-            newContext.setContextWindowManager(new SlidingWindowContextManager());
+            newContext.setContextWindowManager(defaultContextManager);
             return newContext;
         });
         return context;
@@ -129,7 +138,7 @@ public class SessionManagerImpl implements SessionManager {
             SessionContext context = restoreFromSnapshot(snapshot);
             
             // 设置上下文窗口管理器
-            context.setContextWindowManager(new SlidingWindowContextManager());
+            context.setContextWindowManager(defaultContextManager);
             
             sessions.put(sessionId, context);
             return context;
@@ -148,6 +157,13 @@ public class SessionManagerImpl implements SessionManager {
     
     /**
      * 保存所有活跃会话
+     * 
+     * 预留方法 - 供未来多会话场景使用
+     * 
+     * 保留理由：
+     * 1. 未来可能支持多会话并发运行（如多个终端窗口）
+     * 2. JVM 关闭钩子可调用此方法保存所有会话
+     * 3. 定时自动保存功能需要此方法
      */
     public void saveAllSessions() {
         for (String sessionId : sessions.keySet()) {
@@ -191,9 +207,9 @@ public class SessionManagerImpl implements SessionManager {
         LocalDateTime lastActiveAt = context.getLastActiveAt();
         
         // 转换历史消息
-        List<MessageDto> history = new ArrayList<>();
+        List<SessionMessageDto> history = new ArrayList<>();
         for (Message msg : context.getHistory()) {
-            history.add(MessageDto.fromMessage(msg));
+            history.add(SessionMessageDto.fromMessage(msg));
         }
         
         // 提取系统消息内容
@@ -221,7 +237,7 @@ public class SessionManagerImpl implements SessionManager {
         
         // 恢复历史消息
         if (snapshot.getHistory() != null) {
-            for (MessageDto dto : snapshot.getHistory()) {
+            for (SessionMessageDto dto : snapshot.getHistory()) {
                 context.addMessage(dto.toMessage());
             }
         }

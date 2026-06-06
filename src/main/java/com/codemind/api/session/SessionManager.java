@@ -29,6 +29,13 @@ public interface SessionManager {
     void closeSession(String sessionId);
     
     /**
+     * 保存会话到持久化存储
+     * 
+     * @param sessionId 会话 ID
+     */
+    void saveSession(String sessionId);
+    
+    /**
      * 获取活跃会话数量
      */
     int getActiveSessionCount();

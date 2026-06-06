@@ -2,8 +2,6 @@ package com.codemind.dto.session;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
 
 /**
  * 会话上下文数据传输对象

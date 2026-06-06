@@ -12,15 +12,11 @@ import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
-import com.codemind.impl.bootstrap.AppBinder;
+import com.codemind.bootstrap.CodeMindBootstrapper;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
-import com.codemind.impl.skill.SkillDefinition;
-import com.codemind.impl.skill.SkillLoader;
-import com.codemind.impl.skill.routing.SkillRouter;
-import com.codemind.impl.tool.*;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -107,57 +103,29 @@ public class CLI implements Runnable {
         // 检测项目目录（参考 Claude Code：使用 git root）
         Path projectDir = detectProjectDirectory();
         
-        // 使用 AppBinder 集中管理依赖创建
-        AppBinder binder = new AppBinder();
-        AppBinder.AppDependencies deps = binder.createDependencies();
-        
-        // 初始化模型管理器
+        // Use CodeMindBootstrapper for everything
+        CodeMindBootstrapper bootstrapper = new CodeMindBootstrapper();
+        var bootResult = bootstrapper.bootstrap(projectDir);
+
+        this.toolRegistry = bootResult.toolRegistry();
+        this.permissionGate = bootResult.permissionGate();
+        this.sessionManager = bootResult.sessionManager();
+
+        AgentLoop agentLoop = bootResult.agentLoop();
+        SessionContext context = bootResult.session();
+        var skillRouter = bootResult.skillRouter();
+        var promptBuilder = bootResult.promptBuilder();
+
+        // Model manager for switching
         ModelManager modelManager = new ModelManager();
-        
-        // 从依赖配置中获取组件
-        ToolRegistry toolRegistry = deps.getToolRegistry();
-        SessionManager sessionManager = deps.getSessionManager();
-        PermissionGate permissionGate = deps.getPermissionGate();
-        
-        // 保存引用以便后续使用
-        this.toolRegistry = toolRegistry;
-        this.permissionGate = permissionGate;
-        this.sessionManager = sessionManager;
-        
-        // 注册所有工具
-        toolRegistry.register(new ReadTool());
-        toolRegistry.register(new WriteTool());
-        toolRegistry.register(new EditTool());
-        toolRegistry.register(new GrepTool());
-        toolRegistry.register(new BashTool());
-        toolRegistry.register(new GlobTool());
-        toolRegistry.register(new WebFetchTool());
-        // 创建会话并设置工作目录
-        SessionContext context = sessionManager.createSession();
-        context.setWorkingDirectory(projectDir);
-        
-        // 设置系统消息，告知 LLM 工作目录（参考 Claude Code）
-        String systemPrompt = buildSystemPrompt(projectDir);
-        context.setSystemMessage(systemPrompt);
-        
-        // 创建 SkillLoader，从 classpath 加载 Skill 定义
-        SkillLoader skillLoader = binder.createSkillLoader();
-        List<SkillDefinition> skillDefinitions = binder.loadSkillsFromClasspath(skillLoader, null);
 
-        // 创建 LLMClient 和 SkillRouter（使用语义路由）
-        LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
-        SkillRouter skillRouter = binder.createSkillRouter(llmClient, skillDefinitions);
-
-        // 创建 AgentLoop
-        AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter);
-        
-        // 显示当前模型
+        // Display current model
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
         System.out.println();
         System.out.println("欢迎使用 CodeMind！");
-        System.out.println("命令: " + CYAN + "/models" + RESET + " 查看模型, " + 
-                           CYAN + "/switch" + RESET + " 切换模型, " + 
-                           CYAN + "/help" + RESET + " 帮助, " + 
+        System.out.println("命令: " + CYAN + "/models" + RESET + " 查看模型, " +
+                           CYAN + "/switch" + RESET + " 切换模型, " +
+                           CYAN + "/help" + RESET + " 帮助, " +
                            DIM + "quit" + RESET + " 退出");
         System.out.println();
         
@@ -179,8 +147,8 @@ public class CLI implements Runnable {
                 if (newModel != null) {
                     // 模型已切换，重新创建客户端
                     try {
-                        llmClient = ModelFactory.create(newModel);
-                        agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter);
+                        LLMClient newClient = ModelFactory.create(newModel);
+                        agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter, promptBuilder);
                         System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                         System.out.println();
                     } catch (Exception e) {
@@ -523,23 +491,6 @@ public class CLI implements Runnable {
         // 直接使用 CLI 启动时的当前目录
         System.out.println(DIM + "工作目录: " + startDir + RESET);
         return startDir;
-    }
-    
-    /**
-     * 构建系统提示词
-     * 
-     * 参考 Claude Code：告知 LLM 工作目录，避免瞎猜路径
-     * 
-     * @param projectDir 项目目录
-     * @return 系统提示词
-     */
-    private String buildSystemPrompt(Path projectDir) {
-        return "工作目录: " + projectDir.toAbsolutePath() + "\n" +
-               "操作系统: " + System.getProperty("os.name") + "\n" +
-               "注意: 执行命令时默认已在工作目录下，无需 cd。\n\n" +
-               "可用技能（优先使用这些，而不是自己拼凑命令）：\n" +
-               "- code_review: 当你需要审查代码时使用\n" +
-               "- analyze_logs: 当你需要分析日志时使用\n";
     }
     
     /**

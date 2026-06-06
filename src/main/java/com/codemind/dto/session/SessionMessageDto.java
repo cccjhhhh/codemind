@@ -8,100 +8,100 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 消息数据传输对象
- * 
- * 用于 JSON 序列化/反序列化消息。
+ * 会话消息数据传输对象
+ *
+ * 用于会话持久化时的 JSON 序列化/反序列化消息。
+ * 与 LLM API 的 MessageDto 不同，此 DTO 用于会话状态保存。
  */
-public class MessageDto {
-    
+public class SessionMessageDto {
+
     private String role;
     private String content;
-    
+
     @JsonProperty("tool_call_id")
     private String toolCallId;
-    
+
     @JsonProperty("tool_calls")
-    private List<ToolCallDto> toolCalls;
-    
+    private List<SessionToolCallDto> toolCalls;
+
     // 空的构造函数用于反序列化
-    public MessageDto() {}
-    
-    public MessageDto(String role, String content, String toolCallId, List<ToolCallDto> toolCalls) {
+    public SessionMessageDto() {}
+
+    public SessionMessageDto(String role, String content, String toolCallId, List<SessionToolCallDto> toolCalls) {
         this.role = role;
         this.content = content;
         this.toolCallId = toolCallId;
         this.toolCalls = toolCalls;
     }
-    
     public String getRole() {
         return role;
     }
-    
+
     public String getContent() {
         return content;
     }
-    
+
     public String getToolCallId() {
         return toolCallId;
     }
-    
-    public List<ToolCallDto> getToolCalls() {
+
+    public List<SessionToolCallDto> getToolCalls() {
         return toolCalls;
     }
-    
+
     public void setRole(String role) {
         this.role = role;
     }
-    
+
     public void setContent(String content) {
         this.content = content;
     }
-    
+
     public void setToolCallId(String toolCallId) {
         this.toolCallId = toolCallId;
     }
-    
-    public void setToolCalls(List<ToolCallDto> toolCalls) {
+
+    public void setToolCalls(List<SessionToolCallDto> toolCalls) {
         this.toolCalls = toolCalls;
     }
-    
+
     /**
      * 从 API Message 转换为此 DTO
      */
-    public static MessageDto fromMessage(Message message) {
+    public static SessionMessageDto fromMessage(Message message) {
         String role = message.getRole().name().toLowerCase();
         String content = message.getContent();
         String toolCallId = message.getToolCallId();
-        
-        List<ToolCallDto> toolCalls = null;
+
+        List<SessionToolCallDto> toolCalls = null;
         if (message.hasToolCalls()) {
             toolCalls = new ArrayList<>();
             for (ToolCall tc : message.getToolCalls()) {
-                toolCalls.add(ToolCallDto.fromToolCall(tc));
+                toolCalls.add(SessionToolCallDto.fromToolCall(tc));
             }
         }
-        
-        return new MessageDto(role, content, toolCallId, toolCalls);
+
+        return new SessionMessageDto(role, content, toolCallId, toolCalls);
     }
-    
+
     /**
      * 转换为 API Message
      */
     public Message toMessage() {
         Message.Role msgRole = Message.Role.valueOf(role.toUpperCase());
-        
+
         if (toolCallId != null) {
             return new Message(msgRole, content, toolCallId);
         }
-        
+
         if (toolCalls != null && !toolCalls.isEmpty()) {
             List<ToolCall> calls = new ArrayList<>();
-            for (ToolCallDto dto : toolCalls) {
+            for (SessionToolCallDto dto : toolCalls) {
                 calls.add(dto.toToolCall());
             }
             return new Message(msgRole, content, calls);
         }
-        
+
         return new Message(msgRole, content);
     }
 }

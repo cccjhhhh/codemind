@@ -6,19 +6,19 @@ import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.util.Map;
 import java.util.Set;
-import java.util.HashSet;
 import java.util.regex.Pattern;
-import java.util.regex.PatternSyntaxException;
 
 /**
  * 命令执行工具
- * 
+ *
  * 学习要点：
  * - 进程执行与结果收集
  * - 安全沙箱设计
@@ -26,7 +26,8 @@ import java.util.regex.PatternSyntaxException;
  * - 工作目录设置
  */
 public class BashTool implements Tool {
-    
+
+    private static final Logger log = LoggerFactory.getLogger(BashTool.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
     
@@ -202,14 +203,14 @@ public class BashTool implements Tool {
             // 安全检查：黑名单检查（直接拒绝危险命令）
             for (Pattern dangerous : DANGEROUS_PATTERNS) {
                 if (dangerous.matcher(command).find()) {
-                    System.out.println("[SECURITY] 命令被拒绝（危险模式匹配）: " + command);
+                    log.warn("[SECURITY] 命令被拒绝（危险模式匹配）: {}", command);
                     return ToolResult.failure("命令被安全策略拒绝：检测到危险命令模式");
                 }
             }
             
             // 安全检查：白名单检查
             if (!isCommandAllowed(command)) {
-                System.out.println("[SECURITY] 命令被拒绝（不在白名单中）: " + command);
+                log.warn("[SECURITY] 命令被拒绝（不在白名单中）: {}", command);
                 return ToolResult.failure("命令不在允许列表中。如需执行此命令，请联系管理员添加白名单。\n当前白名单包含：git, mvn, gradle, npm, pip, ls, dir, cat, grep 等常用命令。");
             }
             
@@ -222,7 +223,7 @@ public class BashTool implements Tool {
             // 设置工作目录
             if (cwd != null && !cwd.isEmpty()) {
                 workingDir = new File(cwd);
-                System.out.println("[DEBUG] BashTool: cwd=" + workingDir.getAbsolutePath());
+                log.debug("BashTool: cwd={}", workingDir.getAbsolutePath());
             }
             
             ProcessBuilder pb = new ProcessBuilder();
@@ -240,8 +241,8 @@ public class BashTool implements Tool {
             }
             
             pb.redirectErrorStream(true);
-            
-            System.out.println("[DEBUG] Executing command: " + command);
+
+            log.debug("Executing command: {}", command);
             
             Process process = pb.start();
             
@@ -265,8 +266,8 @@ public class BashTool implements Tool {
             if (exitCode != 0) {
                 return ToolResult.failure("命令执行失败（退出码: " + exitCode + "）\n输出: " + output);
             }
-            
-            System.out.println("[DEBUG] Command output: " + output.toString().trim());
+
+            log.debug("Command output: {}", output.toString().trim());
             
             return ToolResult.success(output.toString());
             

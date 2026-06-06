@@ -18,23 +18,23 @@ public class SessionSnapshotDto {
     @JsonProperty("working_directory")
     private String workingDirectory;
     
-    private List<MessageDto> history;
-    
+    private List<SessionMessageDto> history;
+
     @JsonProperty("system_message")
     private String systemMessage;
-    
+
     @JsonProperty("created_at")
     private LocalDateTime createdAt;
-    
+
     @JsonProperty("last_active_at")
     private LocalDateTime lastActiveAt;
-    
+
     // 空的构造函数用于反序列化
     public SessionSnapshotDto() {}
-    
+
     public SessionSnapshotDto(String sessionId, String workingDirectory,
                               LocalDateTime createdAt, LocalDateTime lastActiveAt,
-                              List<MessageDto> history, String systemMessage) {
+                              List<SessionMessageDto> history, String systemMessage) {
         this.sessionId = sessionId;
         this.workingDirectory = workingDirectory;
         this.createdAt = createdAt;
@@ -51,7 +51,7 @@ public class SessionSnapshotDto {
         return workingDirectory;
     }
     
-    public List<MessageDto> getHistory() {
+    public List<SessionMessageDto> getHistory() {
         return history;
     }
     
@@ -76,7 +76,7 @@ public class SessionSnapshotDto {
         this.workingDirectory = workingDirectory;
     }
     
-    public void setHistory(List<MessageDto> history) {
+    public void setHistory(List<SessionMessageDto> history) {
         this.history = history;
     }
     

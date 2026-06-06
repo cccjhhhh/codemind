@@ -1,5 +1,5 @@
 name: analyze_logs
 allowed_tools:
-  - read_file
-  - execute_command
+  - Read
+  - Bash
 version: "1.0.0"

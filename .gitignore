@@ -22,7 +22,6 @@ logs/
 # Config (sensitive)
 application-local.yml
 config.local.yml
-.codemind/config.yml
 
 # Build
 .gradle/
@@ -36,8 +35,8 @@ out/
 # Agent runtime state
 .sisyphus/
 
-# Learning progress (personal notes)
-docs/superpowers/progress
+# External docs (superpower documentation)
+docs
 
-# OpenCode state
-.git/opencode
+# Local test files
+test/
