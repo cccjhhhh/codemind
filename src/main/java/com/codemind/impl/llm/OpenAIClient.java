@@ -129,7 +129,8 @@ public class OpenAIClient implements LLMClient {
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     if (!response.isSuccessful()) {
-                        IOException e = new IOException("API 请求失败: " + response.code());
+                        String errorBody = response.body() != null ? response.body().string() : "Unknown error";
+                        IOException e = new IOException("API 请求失败: " + response.code() + " - " + errorBody);
                         handler.onEvent(StreamEvent.error(e));
                         handler.onError(e);
                         return;
