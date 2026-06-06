@@ -4,17 +4,12 @@ import com.codemind.api.llm.LLMClient;
 import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionManager;
-import com.codemind.api.skill.SkillExecutor;
-import com.codemind.api.skill.SkillRegistry;
 import com.codemind.api.tool.ToolRegistry;
-import com.codemind.impl.builtin.skill.CodeReviewSkill;
-import com.codemind.impl.builtin.skill.LogAnalysisSkill;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillLoader;
-import com.codemind.impl.skill.SkillRegistryImpl;
 import com.codemind.impl.skill.routing.SkillRouter;
 import com.codemind.impl.tool.ToolRegistryImpl;
 
@@ -37,7 +32,6 @@ import java.util.List;
  * <pre>
  * AppBinder binder = new AppBinder();
  * ToolRegistry toolRegistry = binder.createToolRegistry(true);
- * SkillRegistry skillRegistry = binder.createSkillRegistry(toolRegistry);
  * </pre>
  */
 public class AppBinder {
@@ -86,52 +80,21 @@ public class AppBinder {
     }
     
     /**
-     * 创建技能注册中心
-     * 
-     * @param toolRegistry 工具注册中心
-     * @return 配置好的 SkillRegistry 实例
-     */
-    public SkillRegistry createSkillRegistry(ToolRegistry toolRegistry) {
-        return new SkillRegistryImpl(toolRegistry);
-    }
-    
-    /**
-     * 注册所有 Skill Executor
-     * 
-     * 工作流程：
-     * 1. 创建 SkillLoader 加载 Skill 定义
-     * 2. 创建 SkillExecutor 实例
-     * 3. 注册 Executor 到 SkillLoader
-     * 
-     * @param skillLoader Skill 加载器
-     * @param skillsDir Skill 目录路径（包含 SKILL.md 文件）
-     */
-    public void registerSkillExecutors(SkillLoader skillLoader, String skillsDir) {
-        // 1. 加载 Skill 定义
-        List<SkillDefinition> definitions = loadSkills(skillLoader, skillsDir);
-        
-        // 2. 注册 Executor（匹配定义中的名称）
-        // 注意：Executor 名称需与 SKILL.md 中的 name 字段一致
-        skillLoader.registerExecutor("code_review", new CodeReviewSkill());
-        skillLoader.registerExecutor("analyze_logs", new LogAnalysisSkill());
-    }
-    
-    /**
-     * 创建会话管理器
-     * 
-     * @return SessionManager 实例
-     */
-    public SessionManager createSessionManager() {
-        return new SessionManagerImpl();
-    }
-    
-    /**
      * 创建 SkillLoader
-     * 
+     *
      * @return SkillLoader 实例
      */
     public SkillLoader createSkillLoader() {
         return new SkillLoader();
+    }
+
+    /**
+     * 创建会话管理器
+     *
+     * @return SessionManager 实例
+     */
+    public SessionManager createSessionManager() {
+        return new SessionManagerImpl();
     }
     
     /**
@@ -175,70 +138,50 @@ public class AppBinder {
     }
     
     /**
-     * 注册 Skill Executor
-     * 
-     * @param loader Skill 加载器
-     * @param skillName Skill 名称
-     * @param executor 执行器
-     */
-    public void registerSkillExecutor(SkillLoader loader, String skillName, SkillExecutor executor) {
-        loader.registerExecutor(skillName, executor);
-    }
-    
-    /**
      * 创建完整的应用依赖图
-     * 
+     *
      * @return 包含所有核心依赖的配置对象
      */
     public AppDependencies createDependencies() {
         // 按依赖顺序创建
         PermissionGate permissionGate = createPermissionGate();
         ToolRegistry toolRegistry = createToolRegistry(permissionGate);
-        SkillRegistry skillRegistry = createSkillRegistry(toolRegistry);
         SessionManager sessionManager = createSessionManager();
-        
+
         return new AppDependencies(
             permissionGate,
             toolRegistry,
-            skillRegistry,
             sessionManager
         );
     }
-    
+
     /**
      * 应用依赖配置
-     * 
+     *
      * 包含所有核心依赖的引用，便于一次性注入到需要的地方。
      */
     public static class AppDependencies {
-        
+
         private final PermissionGate permissionGate;
         private final ToolRegistry toolRegistry;
-        private final SkillRegistry skillRegistry;
         private final SessionManager sessionManager;
-        
+
         public AppDependencies(PermissionGate permissionGate,
                                ToolRegistry toolRegistry,
-                               SkillRegistry skillRegistry,
                                SessionManager sessionManager) {
             this.permissionGate = permissionGate;
             this.toolRegistry = toolRegistry;
-            this.skillRegistry = skillRegistry;
             this.sessionManager = sessionManager;
         }
-        
+
         public PermissionGate getPermissionGate() {
             return permissionGate;
         }
-        
+
         public ToolRegistry getToolRegistry() {
             return toolRegistry;
         }
-        
-        public SkillRegistry getSkillRegistry() {
-            return skillRegistry;
-        }
-        
+
         public SessionManager getSessionManager() {
             return sessionManager;
         }

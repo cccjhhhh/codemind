@@ -1,7 +1,5 @@
 package com.codemind.dto.llm;
 
-import com.codemind.api.skill.SkillResult;
-
 import java.util.List;
 
 /**
@@ -62,23 +60,6 @@ public class MessageDto {
     
     public static MessageDto tool(String content, String toolCallId) {
         return new MessageDto(Role.TOOL, content, toolCallId);
-    }
-    
-    /**
-     * 创建 Skill 结果消息
-     * 
-     * 注意：Skill 结果不是真正的工具调用响应（没有 tool_call_id），
-     * 因此使用 ASSISTANT 角色而不是 TOOL 角色。
-     * TOOL 角色需要有效的 tool_call_id，OpenAI API 会拒绝 null 值。
-     * 
-     * @param result Skill 执行结果
-     * @return 消息
-     */
-    public static MessageDto skillResult(SkillResult result) {
-        String content = result.isSuccess() 
-            ? "Skill 执行结果:\n" + result.getOutput()
-            : "Skill 执行失败: " + result.getError();
-        return new MessageDto(Role.ASSISTANT, content);
     }
     
     // ========== Getter 方法 ==========

@@ -5,8 +5,6 @@ import com.codemind.api.llm.*;
 import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
-import com.codemind.api.skill.SkillContext;
-import com.codemind.api.skill.SkillResult;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
 import com.codemind.dto.skill.SkillRouteDto;
@@ -101,18 +99,8 @@ public class AgentLoop {
                 return safetyResult;
             }
 
-            // 2. 尝试 Skill 路由
-            SkillResult skillResult = trySkillRouting(input, context, outputHandler, safetyChecker);
-            if (skillResult != null) {
-                if (skillResult.isSuccess()) {
-                    // Skill 完成一切工作（收集数据 + 分析 + 生成报告）
-                    String skillOutput = skillResult.getOutput();
-                    if (skillOutput != null && !skillOutput.isEmpty()) {
-                        return AgentResult.success(safetyChecker.sanitizeOutput(skillOutput));
-                    }
-                    return AgentResult.failure("Skill 未返回有效输出");
-                }
-            }
+            // 2. 尝试 Skill 路由（仅记录日志，不再执行 — Java 执行器已移除）
+            trySkillRouting(input, context, outputHandler);
 
             // 3. 执行主 Agent 循环
             context.addMessage(Message.user(input));
@@ -152,53 +140,28 @@ public class AgentLoop {
     // ==================== Skill 路由 ====================
 
     /**
-     * 尝试 Skill 路由
-     *
-     * @return Skill 执行结果，null 表示未命中路由
+     * 尝试 Skill 路由（仅记录日志 — 不再执行 Java 执行器）
      */
-    private SkillResult trySkillRouting(String input, SessionContext context,
-                                        Consumer<String> outputHandler,
-                                        SafetyChecker safetyChecker) {
+    private void trySkillRouting(String input, SessionContext context,
+                                 Consumer<String> outputHandler) {
         if (skillRouter == null) {
-            return null;
+            return;
         }
 
         SkillRouteDto route = skillRouter.route(input);
         if (route == null) {
-            return null;
+            return;
         }
 
         if (!route.shouldExecute()) {
             log.debug("Skill route confidence too low: {} (threshold: {})",
                 route.confidence(), SkillRouteDto.CONFIDENCE_THRESHOLD);
-            return null;
+            return;
         }
 
-        return executeSkill(input, context, outputHandler, route.skill());
-    }
-
-    /**
-     * 执行 Skill
-     */
-    private SkillResult executeSkill(String input, SessionContext context,
-                                     Consumer<String> outputHandler,
-                                     SkillDefinition skill) {
-        outputHandler.accept(outputFormatter.formatSkillStart(skill.getName(), input));
-
-        // 创建 SkillContext，传入 permissionGate 以支持内置 Skill 权限自动授予
-        SkillContext skillContext = new SkillContext(context, skill.getName(), input,
-                                                      toolRegistry, permissionGate);
-        SkillResult skillResult = skill.execute(skillContext);
-
-        // Skill 执行完毕后撤销临时权限
-        skillContext.revokeBuiltinPermissions();
-
-        outputHandler.accept(outputFormatter.formatSkillCallEnd(skill.getName(), skillResult.isSuccess(), skillResult.getOutput()));
-
-        context.addMessage(Message.user(input));
-        context.addMessage(Message.skillResult(skillResult));
-
-        return skillResult;
+        log.info("Skill routed: {} (reason: {}, confidence: {})",
+            route.skill().getName(), route.reason(), route.confidence());
+        outputHandler.accept(outputFormatter.formatSkillStart(route.skill().getName(), input));
     }
 
     // ==================== 主循环 ====================

@@ -13,8 +13,6 @@ import com.codemind.api.tool.ToolRegistry;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
 import com.codemind.impl.bootstrap.AppBinder;
-import com.codemind.impl.builtin.skill.CodeReviewSkill;
-import com.codemind.impl.builtin.skill.LogAnalysisSkill;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
@@ -134,8 +132,6 @@ public class CLI implements Runnable {
         toolRegistry.register(new BashTool());
         toolRegistry.register(new GlobTool());
         toolRegistry.register(new WebFetchTool());
-        toolRegistry.register(new AgentTool());
-        
         // 创建会话并设置工作目录
         SessionContext context = sessionManager.createSession();
         context.setWorkingDirectory(projectDir);
@@ -144,25 +140,15 @@ public class CLI implements Runnable {
         String systemPrompt = buildSystemPrompt(projectDir);
         context.setSystemMessage(systemPrompt);
         
-        // 创建 SkillLoader
-        // 正确顺序：先注册 Executor，再加载 Skill 定义
+        // 创建 SkillLoader，从 classpath 加载 Skill 定义
         SkillLoader skillLoader = binder.createSkillLoader();
-        
-        // 1. 先注册 Executor（Java 实现类）
-        // 注意：Executor 名称必须与 SKILL.md 中的 name 字段一致
-        skillLoader.registerExecutor("code_review", new CodeReviewSkill());
-        skillLoader.registerExecutor("analyze_logs", new LogAnalysisSkill());
-        
-        // 2. 再从 classpath 加载 Skill 定义（会自动关联已注册的 Executor）
         List<SkillDefinition> skillDefinitions = binder.loadSkillsFromClasspath(skillLoader, null);
-        
-        // 3. 先获取初始模型并创建 LLMClient（SkillRouter 需要）
+
+        // 创建 LLMClient 和 SkillRouter（使用语义路由）
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
-        
-        // 4. 创建 SkillRouter（使用语义路由）
         SkillRouter skillRouter = binder.createSkillRouter(llmClient, skillDefinitions);
-        
-        // 5. 创建 AgentLoop
+
+        // 创建 AgentLoop
         AgentLoop agentLoop = new AgentLoop(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter);
         
         // 显示当前模型

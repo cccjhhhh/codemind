@@ -1,6 +1,5 @@
 package com.codemind.impl.skill;
 
-import com.codemind.api.skill.SkillExecutor;
 import com.codemind.api.skill.SkillMetadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
@@ -38,20 +37,6 @@ public class SkillLoader {
     private static final Pattern FRONTMATTER_PATTERN = 
         Pattern.compile("^---\\s*\\n([\\s\\S]*?)\\n---\\s*\\n([\\s\\S]*)$", Pattern.MULTILINE);
     
-    // Executor 注册表：name -> executor
-    private final Map<String, SkillExecutor> executorRegistry;
-    
-    public SkillLoader() {
-        this.executorRegistry = new HashMap<>();
-    }
-    
-    /**
-     * 注册 Executor
-     */
-    public void registerExecutor(String skillName, SkillExecutor executor) {
-        executorRegistry.put(skillName, executor);
-    }
-    
     /**
      * 从目录加载单个 Skill
      */
@@ -71,16 +56,10 @@ public class SkillLoader {
         if (Files.exists(configPath)) {
             metadata = mergeConfig(metadata, configPath);
         }
-        
-        // 3. 查找对应的 Executor
-        SkillExecutor executor = executorRegistry.get(skillName);
-        if (executor == null) {
-            log.warn("No executor registered for skill: {}, skill will be metadata-only", skillName);
-        }
-        
-        return new SkillDefinition(metadata, executor);
+
+        return new SkillDefinition(metadata);
     }
-    
+
     /**
      * 从 classpath 加载所有 Skill（通用方案）
      * 
@@ -208,14 +187,8 @@ public class SkillLoader {
                 metadata = mergeConfigContent(metadata, configContent);
             }
         }
-        
-        // 5. 查找对应的 Executor
-        SkillExecutor executor = executorRegistry.get(skillName);
-        if (executor == null) {
-            log.warn("No executor registered for skill: {}, skill will be metadata-only", skillName);
-        }
-        
-        return new SkillDefinition(metadata, executor);
+
+        return new SkillDefinition(metadata);
     }
     
     /**
