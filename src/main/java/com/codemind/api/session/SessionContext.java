@@ -9,6 +9,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.codemind.impl.skill.SkillDefinition;
+
 /**
  * 会话上下文
  * 
@@ -22,6 +24,9 @@ import java.util.Map;
  */
 public class SessionContext {
     
+    // 默认最大历史消息数量（防止内存无限增长）
+    private static final int DEFAULT_MAX_HISTORY_SIZE = 100;
+    
     private final String sessionId;
     private Path workingDirectory;
     private final List<Message> history;
@@ -29,11 +34,17 @@ public class SessionContext {
     private LocalDateTime createdAt;
     private LocalDateTime lastActiveAt;
     
+    // 最大历史消息数量
+    private int maxHistorySize = DEFAULT_MAX_HISTORY_SIZE;
+    
     // 系统消息（独立存储，不在 history 中）
     private Message systemMessage;
     
     // 上下文窗口管理器（可选）
     private ContextWindowManager contextWindowManager;
+
+    // 当前活跃技能（用于在 AgentLoop 和 SystemPromptBuilder 之间共享状态）
+    private SkillDefinition activeSkill;
     
     public SessionContext(String sessionId) {
         this.sessionId = sessionId;
@@ -46,10 +57,31 @@ public class SessionContext {
     
     /**
      * 添加消息到历史记录
+     * 
+     * 当历史消息数量超过限制时，自动删除最早的消息（保留系统消息）
      */
     public void addMessage(Message message) {
         history.add(message);
         lastActiveAt = LocalDateTime.now();
+        
+        // 检查容量限制，超出时删除最早的消息
+        while (history.size() > maxHistorySize) {
+            history.remove(0);
+        }
+    }
+    
+    /**
+     * 设置最大历史消息数量
+     */
+    public void setMaxHistorySize(int maxHistorySize) {
+        this.maxHistorySize = maxHistorySize;
+    }
+    
+    /**
+     * 获取最大历史消息数量
+     */
+    public int getMaxHistorySize() {
+        return maxHistorySize;
     }
     
     /**
@@ -135,13 +167,17 @@ public class SessionContext {
      * 如果接近限制，应该警告用户而不是自动裁剪。
      */
     public List<Message> getManagedHistory() {
-        // 直接返回历史 + 系统消息，不做预先裁剪
-        List<Message> result = new ArrayList<>();
+        List<Message> allMessages = new ArrayList<>();
         if (systemMessage != null) {
-            result.add(systemMessage);
+            allMessages.add(systemMessage);
         }
-        result.addAll(history);
-        return result;
+        allMessages.addAll(history);
+        
+        // 调用上下文窗口管理器进行裁剪（如果配置了）
+        if (contextWindowManager != null) {
+            return contextWindowManager.manageWindow(allMessages, systemMessage);
+        }
+        return allMessages;
     }
     
     /**
@@ -177,6 +213,36 @@ public class SessionContext {
         return variables.get(key);
     }
     
+    // === ActiveSkill 支持 ===
+
+    /**
+     * 设置当前活跃技能
+     */
+    public void setActiveSkill(SkillDefinition skill) {
+        this.activeSkill = skill;
+    }
+
+    /**
+     * 获取当前活跃技能
+     */
+    public SkillDefinition getActiveSkill() {
+        return activeSkill;
+    }
+
+    /**
+     * 检查是否有活跃技能
+     */
+    public boolean hasActiveSkill() {
+        return activeSkill != null;
+    }
+
+    /**
+     * 清除当前活跃技能
+     */
+    public void clearActiveSkill() {
+        this.activeSkill = null;
+    }
+
     // Getters
     public String getSessionId() { return sessionId; }
     public Path getWorkingDirectory() { return workingDirectory; }
