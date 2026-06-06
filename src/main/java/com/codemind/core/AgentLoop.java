@@ -3,11 +3,11 @@ package com.codemind.core;
 import com.codemind.api.cli.OutputFormatter;
 import com.codemind.api.llm.*;
 import com.codemind.api.safety.PermissionGate;
-import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
 import com.codemind.dto.skill.SkillRouteDto;
+import com.codemind.impl.cli.SystemPromptBuilder;
 import com.codemind.impl.safety.SafetyChecker;
 import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.routing.SkillRouter;
@@ -49,6 +49,7 @@ public class AgentLoop {
     private final int maxIterations;
     private final long maxExecutionTimeMs;
     private final SkillRouter skillRouter;
+    private final SystemPromptBuilder promptBuilder;
 
     // ==================== 构造方法 ====================
 
@@ -69,6 +70,7 @@ public class AgentLoop {
         this.maxIterations = maxIterations;
         this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
         this.skillRouter = null;
+        this.promptBuilder = null;
         log.warn("AgentLoop 创建时未提供 SkillRouter，语义路由功能将不可用");
     }
 
@@ -83,6 +85,21 @@ public class AgentLoop {
         this.maxIterations = maxIterations;
         this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
         this.skillRouter = skillRouter;
+        this.promptBuilder = null;
+    }
+
+    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
+                      PermissionGate permissionGate, OutputFormatter outputFormatter,
+                      int maxIterations, int maxExecutionTimeSeconds,
+                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder) {
+        this.llmClient = llmClient;
+        this.toolRegistry = toolRegistry;
+        this.permissionGate = permissionGate;
+        this.outputFormatter = outputFormatter;
+        this.maxIterations = maxIterations;
+        this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
+        this.skillRouter = skillRouter;
+        this.promptBuilder = promptBuilder;
     }
 
     // ==================== 公共入口方法 ====================
@@ -99,8 +116,11 @@ public class AgentLoop {
                 return safetyResult;
             }
 
-            // 2. 尝试 Skill 路由（仅记录日志，不再执行 — Java 执行器已移除）
-            trySkillRouting(input, context, outputHandler);
+            // 2. 清除旧技能，尝试激活新技能
+            if (context.hasActiveSkill()) {
+                context.clearActiveSkill();
+            }
+            tryActivateSkill(input, context);
 
             // 3. 执行主 Agent 循环
             context.addMessage(Message.user(input));
@@ -140,28 +160,19 @@ public class AgentLoop {
     // ==================== Skill 路由 ====================
 
     /**
-     * 尝试 Skill 路由（仅记录日志 — 不再执行 Java 执行器）
+     * Try to activate a skill based on user input.
+     * Sets activeSkill on context so SystemPromptBuilder can inject its content.
      */
-    private void trySkillRouting(String input, SessionContext context,
-                                 Consumer<String> outputHandler) {
-        if (skillRouter == null) {
-            return;
-        }
+    private boolean tryActivateSkill(String input, SessionContext context) {
+        if (skillRouter == null) return false;
 
         SkillRouteDto route = skillRouter.route(input);
-        if (route == null) {
-            return;
-        }
+        if (route == null || !route.shouldExecute()) return false;
 
-        if (!route.shouldExecute()) {
-            log.debug("Skill route confidence too low: {} (threshold: {})",
-                route.confidence(), SkillRouteDto.CONFIDENCE_THRESHOLD);
-            return;
-        }
-
-        log.info("Skill routed: {} (reason: {}, confidence: {})",
+        context.setActiveSkill(route.skill());
+        log.info("Skill activated: {} (reason: {}, confidence: {})",
             route.skill().getName(), route.reason(), route.confidence());
-        outputHandler.accept(outputFormatter.formatSkillStart(route.skill().getName(), input));
+        return true;
     }
 
     // ==================== 主循环 ====================
@@ -185,6 +196,12 @@ public class AgentLoop {
             if (iteration > 0) {
                 long elapsed = System.currentTimeMillis() - startTime;
                 outputHandler.accept(outputFormatter.formatProgress(iteration, maxIterations, elapsed));
+            }
+
+            // 重建系统提示词（包含当前激活技能）
+            if (promptBuilder != null) {
+                String prompt = promptBuilder.build(context);
+                context.setSystemMessage(prompt);
             }
 
             // 获取历史和工具
