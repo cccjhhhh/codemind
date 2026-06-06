@@ -78,10 +78,7 @@ public class ToolRegistryImpl implements ToolRegistry {
 
     @Override
     public List<ToolDefinition> getAllDefinitions() {
-        // 只返回主名称的工具定义（去重）
         return tools.values().stream()
-            .filter(t -> !deprecatedToCanonical.containsValue(t.getName()) ||
-                         deprecatedToCanonical.containsValue(t.getName()))  // 去重逻辑
             .distinct()
             .map(t -> new ToolDefinition(t.getName(), t.getDescription(), t.getInputSchema()))
             .toList();
@@ -94,8 +91,11 @@ public class ToolRegistryImpl implements ToolRegistry {
             return ToolResult.failure("Tool not found: " + name);
         }
 
-        // 使用新的权限模型
-        PermissionLevel level = tool.getDefaultPermission();
+        // 检查 PermissionGate 的运行时覆盖，再回退到工具自身默认
+        PermissionLevel level = PermissionLevel.ASK;
+        if (permissionGate != null) {
+            level = permissionGate.getDefaultLevel(name);
+        }
         if (level == PermissionLevel.DENY) {
             return ToolResult.failure("Tool " + tool.getName() + " is denied by default");
         }
