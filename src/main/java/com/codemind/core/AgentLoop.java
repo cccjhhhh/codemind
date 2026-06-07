@@ -9,7 +9,6 @@ import com.codemind.api.tool.ToolResult;
 import com.codemind.dto.skill.SkillRouteDto;
 import com.codemind.impl.cli.SystemPromptBuilder;
 import com.codemind.impl.safety.SafetyChecker;
-import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.routing.SkillRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,19 +23,13 @@ import java.util.function.Consumer;
  * Agent 循环引擎
  *
  * 实现 Agent 的核心"思考-行动-观察"循环（ReAct 模式）。
- * 采用事件驱动的流式输出架构，参考 Claude Code / LangChain 设计。
+ * 采用事件驱动的流式输出架构。
  *
  * 循环流程：
  * 1. 思考 (Think)：将用户输入和上下文发送给 LLM（流式）
  * 2. 行动 (Act)：如果 LLM 请求工具调用，则执行工具（支持权限确认）
  * 3. 观察 (Observe)：将工具执行结果反馈给 LLM
  * 4. 重复直到 LLM 返回最终回答
- *
- * 重构说明（2026-06-06）：
- * - 方法已拆分为更小的、职责单一的方法
- * - 符合 AI_CODING_STANDARDS.md 中的方法长度限制（≤50行）
- *
- * @see <a href="https://arxiv.org/abs/2210.03629">ReAct 论文</a>
  */
 public class AgentLoop {
 
@@ -50,43 +43,6 @@ public class AgentLoop {
     private final long maxExecutionTimeMs;
     private final SkillRouter skillRouter;
     private final SystemPromptBuilder promptBuilder;
-
-    // ==================== 构造方法 ====================
-
-    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
-                      PermissionGate permissionGate, OutputFormatter outputFormatter,
-                      int maxIterations) {
-        this(llmClient, toolRegistry, permissionGate, outputFormatter, maxIterations, 0);
-    }
-
-    @Deprecated
-    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
-                      PermissionGate permissionGate, OutputFormatter outputFormatter,
-                      int maxIterations, int maxExecutionTimeSeconds) {
-        this.llmClient = llmClient;
-        this.toolRegistry = toolRegistry;
-        this.permissionGate = permissionGate;
-        this.outputFormatter = outputFormatter;
-        this.maxIterations = maxIterations;
-        this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
-        this.skillRouter = null;
-        this.promptBuilder = null;
-        log.warn("AgentLoop 创建时未提供 SkillRouter，语义路由功能将不可用");
-    }
-
-    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
-                      PermissionGate permissionGate, OutputFormatter outputFormatter,
-                      int maxIterations, int maxExecutionTimeSeconds,
-                      SkillRouter skillRouter) {
-        this.llmClient = llmClient;
-        this.toolRegistry = toolRegistry;
-        this.permissionGate = permissionGate;
-        this.outputFormatter = outputFormatter;
-        this.maxIterations = maxIterations;
-        this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
-        this.skillRouter = skillRouter;
-        this.promptBuilder = null;
-    }
 
     public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
                       PermissionGate permissionGate, OutputFormatter outputFormatter,
@@ -110,19 +66,16 @@ public class AgentLoop {
             long startTime = System.currentTimeMillis();
             SafetyChecker safetyChecker = new SafetyChecker();
 
-            // 1. 验证输入安全性
             AgentResult safetyResult = validateInput(input, safetyChecker);
             if (safetyResult != null) {
                 return safetyResult;
             }
 
-            // 2. 清除旧技能，尝试激活新技能
             if (context.hasActiveSkill()) {
                 context.clearActiveSkill();
             }
             tryActivateSkill(input, context);
 
-            // 3. 执行主 Agent 循环
             context.addMessage(Message.user(input));
             return executeAgentLoop(context, outputHandler, safetyChecker, startTime);
 
@@ -138,11 +91,6 @@ public class AgentLoop {
 
     // ==================== 输入验证 ====================
 
-    /**
-     * 验证用户输入的安全性
-     *
-     * @return 如果验证失败返回失败结果，null 表示验证通过
-     */
     private AgentResult validateInput(String input, SafetyChecker safetyChecker) {
         if (!safetyChecker.isInputSafe(input)) {
             log.warn("输入包含不安全内容，已拒绝");
@@ -159,10 +107,6 @@ public class AgentLoop {
 
     // ==================== Skill 路由 ====================
 
-    /**
-     * Try to activate a skill based on user input.
-     * Sets activeSkill on context so SystemPromptBuilder can inject its content.
-     */
     private boolean tryActivateSkill(String input, SessionContext context) {
         if (skillRouter == null) return false;
 
@@ -170,56 +114,61 @@ public class AgentLoop {
         if (route == null || !route.shouldExecute()) return false;
 
         context.setActiveSkill(route.skill());
-        log.info("Skill activated: {} (reason: {}, confidence: {})",
+        log.debug("Skill activated: {} (reason: {}, confidence: {})",
             route.skill().getName(), route.reason(), route.confidence());
         return true;
     }
 
     // ==================== 主循环 ====================
 
-    /**
-     * 执行 Agent 主循环
-     */
     private AgentResult executeAgentLoop(SessionContext context,
                                         Consumer<String> outputHandler,
                                         SafetyChecker safetyChecker,
                                         long startTime) {
+        int consecutiveFailures = 0;
+
         for (int iteration = 0; iteration < maxIterations; iteration++) {
-            // 检查超时
             if (isTimeout(startTime)) {
                 outputHandler.accept(outputFormatter.formatWarning(
                     "执行超时（" + (maxExecutionTimeMs / 1000) + "秒），已终止"));
                 return AgentResult.failure("执行超时");
             }
 
-            // 显示进度
             if (iteration > 0) {
                 long elapsed = System.currentTimeMillis() - startTime;
                 outputHandler.accept(outputFormatter.formatProgress(iteration, maxIterations, elapsed));
             }
 
-            // 重建系统提示词（包含当前激活技能）
             if (promptBuilder != null) {
                 String prompt = promptBuilder.build(context);
                 context.setSystemMessage(prompt);
             }
 
-            // 获取历史和工具
             List<Message> history = context.getManagedHistory();
             List<ToolDefinition> tools = toolRegistry.getAllDefinitions();
 
-            // 显示思考指示器
             outputHandler.accept(outputFormatter.formatThinkingStart());
 
-            // 调用 LLM
             AgentTurnResult turnResult = runSingleTurn(history, tools, outputHandler);
 
-            // 添加 LLM 回复到历史
             addToHistory(context, turnResult);
 
-            // 检查工具调用
             if (turnResult.hasToolCalls()) {
-                executeToolCalls(turnResult.toolCalls, context, outputHandler);
+                boolean allFailed = executeToolCalls(turnResult.toolCalls, context, outputHandler);
+
+                if (allFailed) {
+                    consecutiveFailures++;
+                    if (consecutiveFailures >= 3) {
+                        String hint = "【系统提示】连续 " + consecutiveFailures
+                            + " 轮工具调用全部失败。请检查上一条失败原因，不要猜测路径或重复相同命令。"
+                            + "命令报错'找不到路径'说明路径不存在，检查工作目录后使用正确路径。"
+                            + "命令被安全策略拒绝则换用其他方式。";
+                        context.addMessage(Message.user(hint));
+                        consecutiveFailures = 0;
+                    }
+                } else {
+                    consecutiveFailures = 0;
+                }
             } else {
                 return AgentResult.success(safetyChecker.sanitizeOutput(turnResult.fullText));
             }
@@ -228,17 +177,11 @@ public class AgentLoop {
         return AgentResult.failure("达到最大迭代次数 " + maxIterations);
     }
 
-    /**
-     * 检查是否超时
-     */
     private boolean isTimeout(long startTime) {
         return maxExecutionTimeMs > 0
             && (System.currentTimeMillis() - startTime) >= maxExecutionTimeMs;
     }
 
-    /**
-     * 添加 LLM 回复到历史
-     */
     private void addToHistory(SessionContext context, AgentTurnResult turnResult) {
         if (turnResult.hasToolCalls()) {
             context.addMessage(Message.assistantWithTools(turnResult.fullText, turnResult.toolCalls));
@@ -249,21 +192,20 @@ public class AgentLoop {
 
     // ==================== 工具执行 ====================
 
-    /**
-     * 执行工具调用列表
-     */
-    private void executeToolCalls(List<ToolCall> toolCalls,
-                                  SessionContext context,
-                                  Consumer<String> outputHandler) {
+    private boolean executeToolCalls(List<ToolCall> toolCalls,
+                                     SessionContext context,
+                                     Consumer<String> outputHandler) {
+        boolean allFailed = true;
         for (ToolCall toolCall : toolCalls) {
             ToolResult result = executeSingleTool(toolCall, outputHandler);
             addToolResultToHistory(context, toolCall, result);
+            if (result.isSuccess()) {
+                allFailed = false;
+            }
         }
+        return allFailed;
     }
 
-    /**
-     * 执行单个工具
-     */
     private ToolResult executeSingleTool(ToolCall toolCall,
                                         Consumer<String> outputHandler) {
         outputHandler.accept(outputFormatter.formatToolCallStart(
@@ -276,9 +218,6 @@ public class AgentLoop {
         return result;
     }
 
-    /**
-     * 将工具结果添加到历史
-     */
     private void addToolResultToHistory(SessionContext context, ToolCall toolCall, ToolResult result) {
         String resultContent = result.isSuccess()
             ? result.getOutput()
@@ -288,9 +227,6 @@ public class AgentLoop {
 
     // ==================== LLM 调用 ====================
 
-    /**
-     * 执行单轮 LLM 调用（流式）
-     */
     private AgentTurnResult runSingleTurn(List<Message> history, List<ToolDefinition> tools,
                                           Consumer<String> outputHandler) {
         CountDownLatch latch = new CountDownLatch(1);
@@ -349,16 +285,8 @@ public class AgentLoop {
         return new AgentTurnResult(fullText.get(), toolCalls.get());
     }
 
-    // ==================== 辅助方法 ====================
-
-    // extractReplyMessage 方法已移除
-    // 现在直接将 Skill 的输出返回给用户，不再需要 JSON 解析
-
     // ==================== 内部类 ====================
 
-    /**
-     * 单轮 LLM 调用结果
-     */
     private static class AgentTurnResult {
         final String fullText;
         final List<ToolCall> toolCalls;
