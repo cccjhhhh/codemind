@@ -12,18 +12,15 @@ import org.slf4j.LoggerFactory;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
  * 命令执行工具
- *
- * 学习要点：
- * - 进程执行与结果收集
- * - 安全沙箱设计
- * - 超时处理
- * - 工作目录设置
+ * 
  */
 public class BashTool implements Tool {
 
@@ -247,8 +244,9 @@ public class BashTool implements Tool {
             Process process = pb.start();
             
             StringBuilder output = new StringBuilder();
+            Charset charset = isWindows() ? Charset.forName(System.getProperty("sun.jnu.encoding", "GBK")) : StandardCharsets.UTF_8;
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream()))) {
+                    new InputStreamReader(process.getInputStream(), charset))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     output.append(line).append("\n");
@@ -278,7 +276,7 @@ public class BashTool implements Tool {
     
     /**
      * 检查命令是否在白名单中
-     * 
+     *
      * @param command 待检查的命令
      * @return 如果命令被允许返回 true，否则返回 false
      */
@@ -303,4 +301,9 @@ public class BashTool implements Tool {
         
         return false;
     }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+
 }

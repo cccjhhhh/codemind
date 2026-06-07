@@ -17,12 +17,6 @@ import java.util.regex.Pattern;
 /**
  * 代码搜索工具
  *
- * 学习要点：
- * - 正则表达式搜索
- * - 多目录递归搜索
- * - 结果高亮与格式化
- * - 排除规则（参考 ripgrep）
- *
  * 改进：
  * - 默认排除 .git、target、node_modules 等目录
  * - 支持读取 .gitignore 获取项目级排除规则

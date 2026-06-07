@@ -4,7 +4,6 @@ package com.codemind.api.safety;
  * 速率限制器接口
  * 
  * 控制 API 调用的频率，防止超出 Rate Limit。
- * 学习要点：令牌桶算法、滑动窗口算法、线程安全实现
  * 
  * 设计原则：接口分离原则（ISP）
  * - 提供简单的 acquire() 方法用于通用场景

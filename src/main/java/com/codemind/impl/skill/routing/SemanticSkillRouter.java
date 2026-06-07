@@ -44,7 +44,7 @@ public class SemanticSkillRouter {
             log.debug("Attempting semantic routing for: {}", userInput);
             SkillRouteDto result = routeSemantically(userInput);
             if (result != null && result.shouldExecute()) {
-                log.info("Semantic router matched: {} via '{}' (confidence: {})", 
+                log.debug("Semantic router matched: {} via '{}' (confidence: {})",
                     result.skill().getName(), result.matchedKeyword(), result.confidence());
                 return result;
             }

@@ -13,7 +13,6 @@ import java.util.*;
  * 工具注册中心实现
  *
  * 管理所有可用工具的定义和执行。
- * 学习要点：工具注册与发现、参数验证、执行调度、权限控制
  */
 public class ToolRegistryImpl implements ToolRegistry {
 

@@ -10,7 +10,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,10 +25,6 @@ import java.util.regex.Pattern;
  * - 解析 config.yaml 文件
  * - 查找对应的 Java Executor
  * 
- * 学习要点：
- * - 文件解析：自定义格式（YAML frontmatter）
- * - 工厂模式：创建 SkillDefinition
- * - 资源加载：从 classpath 加载
  */
 public class SkillLoader {
     

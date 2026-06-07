@@ -3,8 +3,8 @@ package com.codemind.impl.session;
 import com.codemind.api.llm.Message;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
-import com.codemind.dto.session.SessionMessageDto;
 import com.codemind.dto.session.SessionInfoDto;
+import com.codemind.dto.session.SessionMessageDto;
 import com.codemind.dto.session.SessionSnapshotDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -23,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 管理用户会话的创建、获取、保存和关闭。
  * 支持会话持久化到 JSON 文件。
  * 
- * 学习要点：会话生命周期管理、多用户隔离、会话持久化
  */
 public class SessionManagerImpl implements SessionManager {
     

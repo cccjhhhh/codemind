@@ -14,10 +14,6 @@ import java.util.Map;
 /**
  * 文件写入工具
  * 
- * 学习要点：
- * - 文件写入的安全处理
- * - 目录自动创建
- * - 追加模式 vs 覆盖模式
  */
 public class WriteTool implements Tool {
     

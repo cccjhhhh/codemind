@@ -8,7 +8,6 @@ package com.codemind.api.safety;
  * - ASK: 需要用户确认后执行
  * - DENY: 禁止执行
  * 
- * 学习要点：权限分层设计、最小权限原则
  * 参考设计：Claude Code Permission Model
  */
 public enum PermissionLevel {

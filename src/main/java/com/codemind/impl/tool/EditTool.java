@@ -24,7 +24,6 @@ import java.util.Optional;
  * - 路径遍历检测
  * - 原子写入（先写临时文件，再替换）
  * 
- * 学习要点：文件操作安全、原子写入
  * 参考设计：Claude Code Edit Tool
  */
 public class EditTool implements Tool {

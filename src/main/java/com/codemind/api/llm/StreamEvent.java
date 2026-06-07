@@ -9,10 +9,6 @@ import java.util.Map;
  * 参考 Claude Code / LangChain 的事件驱动架构。
  * 每个 SSE 消息都转换为一个事件，消费者根据事件类型处理。
  * 
- * 学习要点：
- * - 事件驱动设计
- * - 流式数据的状态管理
- * - 工具调用的增量收集
  */
 public class StreamEvent {
     

@@ -1,6 +1,8 @@
 package com.codemind.impl.safety;
 
-import com.codemind.api.safety.*;
+import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.safety.PermissionLevel;
+import com.codemind.api.safety.PermissionPrompter;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,7 +11,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * 权限网关实现
  *
  * 控制危险操作的执行权限。
- * 学习要点：权限控制模型、白名单机制、用户确认流程
  *
  * 设计原则：依赖倒置原则（DIP）
  * - 此类实现 PermissionGate 接口

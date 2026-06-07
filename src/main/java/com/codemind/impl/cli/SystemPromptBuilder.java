@@ -21,6 +21,16 @@ public class SystemPromptBuilder {
 
         sb.append("你是一个安全的 AI 编程助手 CodeMind。\n\n");
 
+        // 0. Environment context — critical for avoiding path guessing
+        sb.append("## 运行环境\n\n");
+        sb.append("- **工作目录**: `").append(context.getWorkingDirectory()).append("`\n");
+        sb.append("- **操作系统**: ").append(detectOS()).append("\n");
+        sb.append("- **Shell**: ").append(detectOS().contains("Windows") ? "cmd.exe (Windows)\n" : "sh/bash (Unix)\n");
+        sb.append("\n");
+        sb.append("**重要**: 所有 Bash 命令默认在工作目录下执行。\n");
+        sb.append("不要猜测路径，不要使用 `cd` 切换目录。\n");
+        sb.append("如果需要在不同目录执行命令，使用 Bash 工具的 `cwd` 参数。\n\n");
+
         // 1. Tool list
         sb.append("## 可用工具\n\n");
         for (var def : toolRegistry.getAllDefinitions()) {
@@ -51,5 +61,13 @@ public class SystemPromptBuilder {
         }
 
         return sb.toString();
+    }
+
+    private String detectOS() {
+        String os = System.getProperty("os.name").toLowerCase();
+        if (os.contains("win")) return "Windows";
+        if (os.contains("mac")) return "macOS";
+        if (os.contains("nix") || os.contains("nux")) return "Linux";
+        return os;
     }
 }

@@ -8,7 +8,6 @@ import java.util.List;
  * Token 计数服务接口
  * 
  * 用于估算消息列表的 token 数量。
- * 学习要点：上下文窗口管理、Token 计数策略
  * 
  * 注意：这是一个估算服务，精确计数需要使用模型特定的 tokenizer。
  */

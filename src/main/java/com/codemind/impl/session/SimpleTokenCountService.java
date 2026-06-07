@@ -14,8 +14,6 @@ import java.util.List;
  * - 中日韩字符：约 2 字符 = 1 token（CJK 字符通常编码为多个 token）
  * - 每条消息额外增加格式开销 token
  * 
- * 学习要点：Token 估算策略、上下文窗口管理
- * 
  * 参考：OpenAI 的 tiktoken 库、Claude 的 tokenizer
  */
 public class SimpleTokenCountService implements TokenCountService {

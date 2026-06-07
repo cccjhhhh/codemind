@@ -1,6 +1,7 @@
 package com.codemind.api.session;
 
 import com.codemind.api.llm.Message;
+import com.codemind.impl.skill.SkillDefinition;
 
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -8,8 +9,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.codemind.impl.skill.SkillDefinition;
 
 /**
  * 会话上下文
@@ -20,7 +19,6 @@ import com.codemind.impl.skill.SkillDefinition;
  * - 系统消息
  * - 变量存储
  * 
- * 学习要点：上下文管理、状态持久化、短期记忆实现
  */
 public class SessionContext {
     
@@ -102,7 +100,6 @@ public class SessionContext {
      * 设置系统消息
      * 
      * 系统消息独立存储，始终作为消息列表的第一条消息。
-     * 学习要点：System Prompt 的作用和注入时机
      */
     public void setSystemMessage(String content) {
         this.systemMessage = Message.system(content);

@@ -19,11 +19,6 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * OpenAI LLM 客户端实现
  * 
- * 学习要点：
- * - HTTP API 调用封装
- * - JSON 请求/响应处理
- * - 流式响应处理（Server-Sent Events）
- * - 工具调用的增量解析
  */
 public class OpenAIClient implements LLMClient {
     
@@ -362,7 +357,6 @@ public class OpenAIClient implements LLMClient {
      */
     private String buildMessagesJson(List<Message> messages) throws Exception {
         ArrayNode array = MAPPER.createArrayNode();
-        boolean seenAssistantWithTools = false;
         for (Message msg : messages) {
             ObjectNode node = array.addObject();
             String role = msg.getRole().name().toLowerCase();
@@ -377,7 +371,6 @@ public class OpenAIClient implements LLMClient {
                     toolCallId = "null_tool_call_id";
                 }
                 node.put("tool_call_id", toolCallId);
-                seenAssistantWithTools = false;
             }
 
             // ASSISTANT 角色可能有 tool_calls
@@ -391,7 +384,6 @@ public class OpenAIClient implements LLMClient {
                     funcNode.put("name", tc.getName());
                     funcNode.put("arguments", MAPPER.writeValueAsString(tc.getArguments()));
                 }
-                seenAssistantWithTools = true;
             }
 
             // content 字段：Assistant 带 tool_calls 时设为 null（部分 API 要求），否则可为空字符串
@@ -412,7 +404,7 @@ public class OpenAIClient implements LLMClient {
                 roles.append("(").append(msg.getToolCalls().size()).append(" tools)");
             }
         }
-        log.info("消息序列: {} (共{}条)", roles, messages.size());
+        log.debug("消息序列: {} (共{}条)", roles, messages.size());
         if (log.isDebugEnabled()) {
             log.debug("Messages JSON (first 500 chars): {}", result.substring(0, Math.min(500, result.length())));
         }

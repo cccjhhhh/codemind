@@ -10,11 +10,6 @@ import java.util.concurrent.locks.ReentrantLock;
  * 
  * 使用令牌桶算法实现 API 调用频率控制。
  * 
- * 学习要点：
- * 1. 令牌桶算法原理：按固定速率向桶中添加令牌，请求消耗令牌
- * 2. 线程安全：使用 ReentrantLock 保证并发安全
- * 3. 阻塞与重试：acquire() 方法会阻塞直到获取到令牌
- * 
  * 参数说明：
  * - permitsPerSecond: 每秒生成的令牌数（API Rate Limit）
  * - maxBurst: 桶的最大容量（允许的突发流量大小）

@@ -4,7 +4,6 @@ package com.codemind.api.session;
  * 会话管理器接口
  * 
  * 管理用户会话的创建、获取、保存和关闭。
- * 学习要点：会话生命周期管理、多用户隔离
  */
 public interface SessionManager {
     

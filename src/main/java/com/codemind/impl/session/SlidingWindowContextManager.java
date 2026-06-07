@@ -15,9 +15,6 @@ import java.util.List;
  * 2. 当超出限制时，从最早的用户消息开始删除
  * 3. 保持消息的成对完整性（user-assistant 交替）
  * 
- * 学习要点：
- * - 滑动窗口策略的实现
- * - 重要消息的优先级保留
  * - Token 预算的动态管理
  */
 public class SlidingWindowContextManager implements ContextWindowManager {
@@ -154,12 +151,22 @@ public class SlidingWindowContextManager implements ContextWindowManager {
             
             // 删除 user 消息
             result.remove(deleteIndex);
-            
+
             // 如果下一条是 assistant 或 tool，也删除
             if (deleteIndex < result.size()) {
                 Message.Role nextRole = result.get(deleteIndex).getRole();
-                if (nextRole == Message.Role.ASSISTANT || nextRole == Message.Role.TOOL) {
+                if (nextRole == Message.Role.ASSISTANT) {
+                    // 删除 assistant 消息
                     result.remove(deleteIndex);
+                    // 同时删除属于该 assistant 的所有 tool 结果（防止 tool 孤立）
+                    while (deleteIndex < result.size() && result.get(deleteIndex).getRole() == Message.Role.TOOL) {
+                        result.remove(deleteIndex);
+                    }
+                } else if (nextRole == Message.Role.TOOL) {
+                    // 删除所有连续 tool（防止孤立 tool）
+                    while (deleteIndex < result.size() && result.get(deleteIndex).getRole() == Message.Role.TOOL) {
+                        result.remove(deleteIndex);
+                    }
                 }
             }
         }

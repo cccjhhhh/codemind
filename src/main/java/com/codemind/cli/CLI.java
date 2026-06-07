@@ -8,11 +8,10 @@ import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.safety.PermissionPrompter;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
-import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.api.tool.ToolRegistry;
+import com.codemind.bootstrap.CodeMindBootstrapper;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
-import com.codemind.bootstrap.CodeMindBootstrapper;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
@@ -525,7 +524,7 @@ public class CLI implements Runnable {
                 session.getSessionId().substring(0, Math.min(8, session.getSessionId().length())) + "...",
                 session.getCreatedAt().toString().substring(0, 16),
                 session.getLastActiveAt().toString().substring(0, 16),
-                session.getMessageCount());
+                session.getHistorySize());
         }
         System.out.println();
         System.out.println("使用 " + CYAN + "/load <session_id>" + RESET + " 加载会话");

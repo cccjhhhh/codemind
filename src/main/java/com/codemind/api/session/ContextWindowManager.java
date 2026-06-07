@@ -9,10 +9,6 @@ import java.util.List;
  * 
  * 管理 Agent 的上下文窗口，确保消息列表不超过模型的 token 限制。
  * 
- * 学习要点：
- * - 上下文窗口策略（滑动窗口、摘要压缩）
- * - Token 预算管理
- * - 重要消息保留策略
  */
 public interface ContextWindowManager {
     

@@ -6,7 +6,6 @@ import com.codemind.api.safety.RateLimiter;
  * API 速率限制器工厂
  * 
  * 为不同的 API 提供商创建合适的速率限制器。
- * 学习要点：不同 API 有不同的 Rate Limit，需要针对性配置
  */
 public class RateLimiterFactory {
     

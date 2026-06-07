@@ -14,10 +14,6 @@ import java.util.Map;
 /**
  * 文件读取工具
  * 
- * 学习要点：
- * - 工具的标准实现模式
- * - JSON Schema 参数定义
- * - 文件操作的安全处理
  */
 public class ReadTool implements Tool {
     

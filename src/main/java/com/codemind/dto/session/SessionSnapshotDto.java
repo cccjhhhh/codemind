@@ -1,35 +1,17 @@
 package com.codemind.dto.session;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * 会话快照 DTO
- * 
- * 用于 JSON 序列化/反序列化会话状态。
- */
 public class SessionSnapshotDto {
-    
-    @JsonProperty("session_id")
-    private String sessionId;
-    
-    @JsonProperty("working_directory")
-    private String workingDirectory;
-    
-    private List<SessionMessageDto> history;
 
-    @JsonProperty("system_message")
+    private String sessionId;
+    private String workingDirectory;
+    private LocalDateTime createdAt;
+    private LocalDateTime lastActiveAt;
+    private List<SessionMessageDto> history;
     private String systemMessage;
 
-    @JsonProperty("created_at")
-    private LocalDateTime createdAt;
-
-    @JsonProperty("last_active_at")
-    private LocalDateTime lastActiveAt;
-
-    // 空的构造函数用于反序列化
     public SessionSnapshotDto() {}
 
     public SessionSnapshotDto(String sessionId, String workingDirectory,
@@ -42,53 +24,24 @@ public class SessionSnapshotDto {
         this.history = history;
         this.systemMessage = systemMessage;
     }
-    
-    public String getSessionId() {
-        return sessionId;
-    }
-    
-    public String getWorkingDirectory() {
-        return workingDirectory;
-    }
-    
-    public List<SessionMessageDto> getHistory() {
-        return history;
-    }
-    
-    public String getSystemMessage() {
-        return systemMessage;
-    }
-    
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-    
-    public LocalDateTime getLastActiveAt() {
-        return lastActiveAt;
-    }
-    
-    // Getters 和 Setters 用于 Jackson 反序列化
-    public void setSessionId(String sessionId) {
-        this.sessionId = sessionId;
-    }
-    
-    public void setWorkingDirectory(String workingDirectory) {
-        this.workingDirectory = workingDirectory;
-    }
-    
-    public void setHistory(List<SessionMessageDto> history) {
-        this.history = history;
-    }
-    
-    public void setSystemMessage(String systemMessage) {
-        this.systemMessage = systemMessage;
-    }
-    
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-    
-    public void setLastActiveAt(LocalDateTime lastActiveAt) {
-        this.lastActiveAt = lastActiveAt;
-    }
+
+    // Getters and setters for Jackson
+
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String sessionId) { this.sessionId = sessionId; }
+
+    public String getWorkingDirectory() { return workingDirectory; }
+    public void setWorkingDirectory(String workingDirectory) { this.workingDirectory = workingDirectory; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
+
+    public LocalDateTime getLastActiveAt() { return lastActiveAt; }
+    public void setLastActiveAt(LocalDateTime lastActiveAt) { this.lastActiveAt = lastActiveAt; }
+
+    public List<SessionMessageDto> getHistory() { return history; }
+    public void setHistory(List<SessionMessageDto> history) { this.history = history; }
+
+    public String getSystemMessage() { return systemMessage; }
+    public void setSystemMessage(String systemMessage) { this.systemMessage = systemMessage; }
 }

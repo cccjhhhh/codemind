@@ -8,22 +8,17 @@ import com.knuddels.jtokkit.api.Encoding;
 import com.knuddels.jtokkit.api.EncodingRegistry;
 import com.knuddels.jtokkit.api.EncodingType;
 import com.knuddels.jtokkit.api.ModelType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.logging.Logger;
 
 /**
  * 基于 JTokkit 的专业 Token 计数服务
  * 
  * JTokkit 是 OpenAI tiktoken 的 Java 移植版，提供精确的 token 计数。
- * 
- * 学习要点：
- * - 利用 JTokkit 内置的 ModelType.fromName() 自动匹配模型
- * - 不同模型使用不同的 tokenizer (cl100k_base, o200k_base 等)
- * - 消息格式开销（role markers, special tokens）
- * - 对于未知模型的处理策略
  * 
  * 支持的模型（通过 JTokkit ModelType）：
  * - GPT-4, GPT-4-turbo, GPT-4-32K (cl100k_base)
@@ -37,7 +32,7 @@ import java.util.logging.Logger;
  */
 public class JTokkitTokenCountService implements TokenCountService {
     
-    private static final Logger LOGGER = Logger.getLogger(JTokkitTokenCountService.class.getName());
+    private static final Logger LOGGER = LoggerFactory.getLogger(JTokkitTokenCountService.class);
     
     // 单例 EncodingRegistry（线程安全，创建成本高）
     private static final EncodingRegistry REGISTRY = Encodings.newDefaultEncodingRegistry();
@@ -118,7 +113,7 @@ public class JTokkitTokenCountService implements TokenCountService {
      */
     public static JTokkitTokenCountService forModel(String modelName) {
         if (modelName == null || modelName.isEmpty()) {
-            LOGGER.warning("模型名称为空，使用默认编码 cl100k_base");
+            LOGGER.warn("模型名称为空，使用默认编码 cl100k_base");
             return new JTokkitTokenCountService(DEFAULT_ENCODING, DEFAULT_MAX_CONTEXT, "unknown");
         }
         
@@ -161,12 +156,12 @@ public class JTokkitTokenCountService implements TokenCountService {
         
         if (lowerModelName.contains("claude")) {
             int maxContext = COMPATIBLE_MODEL_CONTEXT.getOrDefault(lowerModelName, 200000);
-            LOGGER.warning("Claude 模型使用 cl100k_base 近似编码（Claude 有自己的 tokenizer）: " + modelName);
+            LOGGER.warn("Claude 模型使用 cl100k_base 近似编码（Claude 有自己的 tokenizer）: " + modelName);
             return new JTokkitTokenCountService(EncodingType.CL100K_BASE, maxContext, modelName);
         }
         
         // 4. 未知模型，使用默认编码并警告
-        LOGGER.warning("未知模型 '" + modelName + "'，使用默认编码 cl100k_base。" +
+        LOGGER.warn("未知模型 '" + modelName + "'，使用默认编码 cl100k_base。" +
                        "如果 token 计数不准确，请手动配置 EncodingType。");
         return new JTokkitTokenCountService(DEFAULT_ENCODING, DEFAULT_MAX_CONTEXT, modelName);
     }

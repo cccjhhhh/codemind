@@ -23,7 +23,6 @@ import java.util.Optional;
  * - HTML/Markdown 输出
  * - 超时控制
  * 
- * 学习要点：HTTP 客户端使用、响应处理
  * 参考设计：Claude Code WebFetch
  */
 public class WebFetchTool implements Tool {

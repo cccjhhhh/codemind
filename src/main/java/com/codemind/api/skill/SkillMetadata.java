@@ -6,9 +6,6 @@ import java.util.Map;
 /**
  * Skill 元数据（从 SKILL.md 解析）
  * 
- * 学习要点：
- * - Record 类型：不可变数据载体（Java 17+）
- * - 元数据与业务逻辑分离：易于序列化和缓存
  */
 public record SkillMetadata(
     String name,                      // 唯一标识

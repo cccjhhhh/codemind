@@ -8,7 +8,6 @@ import java.util.regex.Pattern;
  * 安全检查器
  * 
  * 对用户输入和 Agent 输出进行安全检查。
- * 学习要点：输入验证、Prompt 注入检测、输出过滤、路径安全
  */
 public class SafetyChecker {
     
