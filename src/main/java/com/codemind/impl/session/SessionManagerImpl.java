@@ -9,9 +9,13 @@ import com.codemind.dto.session.SessionSnapshotDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -26,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class SessionManagerImpl implements SessionManager {
     
+    private static final Logger log = LoggerFactory.getLogger(SessionManagerImpl.class);
     private static final String SESSION_DIR = System.getProperty("user.home") + "/.codemind/sessions";
     
     private final Map<String, SessionContext> sessions = new ConcurrentHashMap<>();
@@ -74,17 +79,21 @@ public class SessionManagerImpl implements SessionManager {
     }
     
     @Override
-    public SessionContext getOrCreateSession(String sessionId) {
-        SessionContext context = sessions.computeIfAbsent(sessionId, id -> {
-            SessionContext newContext = new SessionContext(id);
-            newContext.setContextWindowManager(defaultContextManager);
-            return newContext;
-        });
-        return context;
-    }
-    
-    @Override
     public void closeSession(String sessionId) {
+        // 清理 spill 文件（大结果落盘产生的临时文件）
+        Path spillDir = Path.of(System.getProperty("user.dir"), ".codemind/spill", sessionId);
+        try {
+            if (Files.exists(spillDir)) {
+                try (var files = Files.walk(spillDir)) {
+                    files.sorted(java.util.Comparator.reverseOrder())
+                         .forEach(p -> p.toFile().delete());
+                }
+                log.debug("已清理 spill 目录: {}", spillDir);
+            }
+        } catch (IOException e) {
+            log.warn("清理 spill 目录失败: {}", e.getMessage());
+        }
+
         // 先保存会话
         saveSession(sessionId);
         sessions.remove(sessionId);
@@ -93,11 +102,6 @@ public class SessionManagerImpl implements SessionManager {
     @Override
     public int getActiveSessionCount() {
         return sessions.size();
-    }
-    
-    @Override
-    public void clearAllSessions() {
-        sessions.clear();
     }
     
     /**
@@ -116,7 +120,7 @@ public class SessionManagerImpl implements SessionManager {
             File file = getSessionFile(sessionId);
             objectMapper.writeValue(file, snapshot);
         } catch (IOException e) {
-            System.err.println("保存会话失败: " + e.getMessage());
+            log.error("保存会话失败: {}", e.getMessage());
         }
     }
     
@@ -142,7 +146,7 @@ public class SessionManagerImpl implements SessionManager {
             sessions.put(sessionId, context);
             return context;
         } catch (IOException e) {
-            System.err.println("加载会话失败: " + e.getMessage());
+            log.error("加载会话失败: {}", e.getMessage());
             return null;
         }
     }
@@ -152,22 +156,6 @@ public class SessionManagerImpl implements SessionManager {
      */
     private File getSessionFile(String sessionId) {
         return new File(sessionDir, sessionId + ".json");
-    }
-    
-    /**
-     * 保存所有活跃会话
-     * 
-     * 预留方法 - 供未来多会话场景使用
-     * 
-     * 保留理由：
-     * 1. 未来可能支持多会话并发运行（如多个终端窗口）
-     * 2. JVM 关闭钩子可调用此方法保存所有会话
-     * 3. 定时自动保存功能需要此方法
-     */
-    public void saveAllSessions() {
-        for (String sessionId : sessions.keySet()) {
-            saveSession(sessionId);
-        }
     }
     
     /**

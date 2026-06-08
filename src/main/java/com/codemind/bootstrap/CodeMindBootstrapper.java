@@ -101,6 +101,8 @@ public class CodeMindBootstrapper {
         SlidingWindowContextManager contextManager = SlidingWindowContextManager.forModel(
             modelManager.getCurrentModelId()
         );
+        contextManager.setTargetRatio(settings.getContext().getWindow().getTargetRatio());
+        contextManager.setStaleRounds(settings.getContext().getWindow().getStaleRounds());
         SessionManagerImpl sessionManager = new SessionManagerImpl(contextManager);
         SessionContext session = sessionManager.createSession();
         session.setWorkingDirectory(projectDir);
