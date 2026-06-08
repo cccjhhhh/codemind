@@ -4,25 +4,16 @@ import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.safety.PermissionPrompter;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * 权限网关实现
- *
- * 控制危险操作的执行权限。
- *
- * 设计原则：依赖倒置原则（DIP）
- * - 此类实现 PermissionGate 接口
- * - 高层模块通过接口使用，不直接依赖此类
- * - PermissionPrompter 通过构造器注入
- */
 public class PermissionGateImpl implements PermissionGate {
 
     private final PermissionPrompter permissionPrompter;
     private final Map<String, PermissionLevel> runtimeLevels = new ConcurrentHashMap<>();
+    private List<PermissionRule> rules = List.of();
 
-    // 默认权限级别映射
     private static final Map<String, PermissionLevel> DEFAULT_LEVELS = Map.ofEntries(
         Map.entry("Read", PermissionLevel.ALLOW),
         Map.entry("Write", PermissionLevel.ASK),
@@ -30,17 +21,39 @@ public class PermissionGateImpl implements PermissionGate {
         Map.entry("Glob", PermissionLevel.ALLOW),
         Map.entry("Grep", PermissionLevel.ALLOW),
         Map.entry("Bash", PermissionLevel.ASK),
-        Map.entry("WebFetch", PermissionLevel.ALLOW)
+        Map.entry("WebFetch", PermissionLevel.ALLOW),
+        Map.entry("LoadSkill", PermissionLevel.ALLOW),
+        Map.entry("Todo", PermissionLevel.ALLOW),
+        Map.entry("Task", PermissionLevel.ALLOW)
     );
 
     public PermissionGateImpl(PermissionPrompter permissionPrompter) {
         this.permissionPrompter = permissionPrompter;
     }
 
+    public record PermissionRule(String tool, String condition, PermissionLevel level) {
+        public boolean matches(String toolName) {
+            return "*".equals(tool) || tool.equals(toolName);
+        }
+    }
+
+    public void setRules(List<PermissionRule> rules) {
+        this.rules = rules != null ? rules : List.of();
+    }
+
     @Override
     public PermissionLevel getDefaultLevel(String toolName) {
-        return runtimeLevels.getOrDefault(toolName,
-            DEFAULT_LEVELS.getOrDefault(toolName, PermissionLevel.ASK));
+        // 1. 运行时覆盖优先
+        PermissionLevel runtime = runtimeLevels.get(toolName);
+        if (runtime != null) return runtime;
+
+        // 2. 规则匹配
+        for (PermissionRule rule : rules) {
+            if (rule.matches(toolName)) return rule.level();
+        }
+
+        // 3. 静态默认
+        return DEFAULT_LEVELS.getOrDefault(toolName, PermissionLevel.ASK);
     }
 
     @Override

@@ -7,8 +7,8 @@ import com.codemind.api.safety.PermissionLevel;
  */
 public class ToolResult {
 
-    private final boolean success;
-    private final String output;
+    private boolean success;
+    private String output;
     private final String error;
     private final PermissionLevel requiredLevel;
 
@@ -44,4 +44,9 @@ public class ToolResult {
     public String getError() { return error; }
     public PermissionLevel getRequiredLevel() { return requiredLevel; }
     public boolean needsConfirmation() { return requiredLevel == PermissionLevel.ASK; }
+
+    /** 替换输出内容（用于 TruncationHook 进行大结果落盘替换） */
+    public void setOutput(String newOutput) {
+        this.output = newOutput;
+    }
 }
