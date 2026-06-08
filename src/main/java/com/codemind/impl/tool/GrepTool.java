@@ -30,8 +30,9 @@ public class GrepTool implements Tool {
     /**
      * 排除规则管理器
      * 在每次 execute 时根据工作目录动态加载
+     * 使用 volatile 保证线程可见性
      */
-    private ExcludeRules excludeRules;
+    private volatile ExcludeRules excludeRules;
     
     @Override
     public String getName() {
@@ -119,16 +120,14 @@ public class GrepTool implements Tool {
                                  List<String> results, int limit) {
         if (results.size() >= limit) return;
 
-        // 初始化排除规则（每个搜索会话创建新实例）
-        if (excludeRules == null) {
-            excludeRules = new ExcludeRules();
-        }
+        // 为每次搜索创建新实例，避免线程安全问题
+        ExcludeRules rules = new ExcludeRules();
 
         try {
             Files.walk(dir)
                 .filter(Files::isRegularFile)
-                .filter(f -> !excludeRules.shouldExclude(f))  // 排除非源代码文件
-                .filter(f -> !isInExcludedDir(f))             // 排除在排除目录内的文件
+                .filter(f -> !rules.shouldExclude(f))  // 排除非源代码文件
+                .filter(f -> !isInExcludedDir(f, rules))             // 排除在排除目录内的文件
                 .filter(f -> matchesFileType(f, fileType))
                 .forEach(file -> searchFile(file, pattern, results, limit));
         } catch (Exception e) {
@@ -139,7 +138,7 @@ public class GrepTool implements Tool {
     /**
      * 检查文件是否在排除的目录内
      */
-    private boolean isInExcludedDir(Path file) {
+    private boolean isInExcludedDir(Path file, ExcludeRules rules) {
         Path absFile = file.toAbsolutePath().normalize();
         Path absDir = file.getRoot();
 
@@ -151,7 +150,7 @@ public class GrepTool implements Tool {
             }
             // 检查完整的父目录路径是否匹配排除模式
             String parentStr = absDir.relativize(parent).toString().replace("\\", "/");
-            if (excludeRules.shouldExclude(parentStr)) {
+            if (rules.shouldExclude(parentStr)) {
                 return true;
             }
         }

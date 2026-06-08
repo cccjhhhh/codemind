@@ -18,12 +18,24 @@ import java.util.Map;
 public class DefaultOutputFormatter implements OutputFormatter {
     
     // 工具图标映射
-    private static final Map<String, String> TOOL_ICONS = Map.of(
-        "execute_command", "⚙️",
-        "read_file", "📄",
-        "write_file", "✏️",
-        "search_code", "🔍",
-        "code_review", "📊"
+    private static final Map<String, String> TOOL_ICONS = Map.ofEntries(
+        Map.entry("Bash", "⚡"),
+        Map.entry("Read", "📖"),
+        Map.entry("Write", "✏️"),
+        Map.entry("Edit", "🔧"),
+        Map.entry("Grep", "🔍"),
+        Map.entry("Glob", "📁"),
+        Map.entry("WebFetch", "🌐"),
+        Map.entry("LSP", "💡"),
+        Map.entry("TodoWrite", "📝"),
+        Map.entry("Skill", "🧩"),
+        Map.entry("AskUser", "❓"),
+        Map.entry("ViewCode", "🔎"),
+        Map.entry("SearchWeb", "🔎"),
+        Map.entry("ListDirectory", "📂"),
+        Map.entry("Command", "⚙️"),
+        Map.entry("Resource", "📦"),
+        Map.entry("Prompt", "💬")
     );
     
     // Skill 图标
@@ -140,7 +152,6 @@ public class DefaultOutputFormatter implements OutputFormatter {
     
     // ========== 思考指示器（Thinking Indicator）==========
     
-    private static final String THINKING_TEXT = "∴ Thinking";
     private static final String[] THINKING_FRAMES = {
         "∴ Thinking   ",
         "∴ Thinking.  ",
@@ -204,25 +215,6 @@ public class DefaultOutputFormatter implements OutputFormatter {
     }
     
     /**
-     * 格式化 Skill 调用开始
-     */
-    public String formatSkillCallStart(String skillName, String description) {
-        StringBuilder sb = new StringBuilder();
-        
-        sb.append("\n")
-          .append(AnsiStyles.DIM).append("┌─ ").append(AnsiStyles.RESET)
-          .append(SKILL_ICON).append(" ")
-          .append(AnsiStyles.BOLD).append(AnsiStyles.MAGENTA).append(skillName).append(AnsiStyles.RESET)
-          .append(AnsiStyles.DIM).append(": ").append(AnsiStyles.RESET)
-          .append(description)
-          .append("\n")
-          .append(AnsiStyles.DIM).append("└─ ").append(AnsiStyles.RESET)
-          .append("执行中").append("...");
-        
-        return sb.toString();
-    }
-    
-    /**
      * 格式化 Skill 调用进度阶段
      */
     @Override
@@ -233,83 +225,9 @@ public class DefaultOutputFormatter implements OutputFormatter {
     }
     
     /**
-     * 格式化 JSON 输出，提取关键信息
-     */
-    private String formatJsonOutput(String json) {
-        try {
-            // 简单解析：提取 status 和 message
-            String status = extractJsonValue(json, "status");
-            String message = extractJsonValue(json, "message");
-            String action = extractJsonValue(json, "action");
-            
-            if (action != null && "reply_to_user".equals(action)) {
-                // 直接回复用户
-                return message != null ? message : "";
-            }
-            
-            if ("need_input".equals(status)) {
-                return AnsiStyles.YELLOW + message + AnsiStyles.RESET;
-            }
-            
-            if ("error".equals(status)) {
-                String error = extractJsonValue(json, "error");
-                return AnsiStyles.RED + "错误: " + (message != null ? message : error) + AnsiStyles.RESET;
-            }
-            
-            if ("success".equals(status)) {
-                String file = extractJsonValue(json, "file");
-                int classCount = extractJsonInt(json, "classCount");
-                int methodCount = extractJsonInt(json, "methodCount");
-                return AnsiStyles.CYAN + "文档已生成" + AnsiStyles.RESET + 
-                       (file != null ? " → " + AnsiStyles.DIM + file + AnsiStyles.RESET : "") +
-                       " (" + classCount + " 类, " + methodCount + " 方法)";
-            }
-            
-            // 默认：显示 message
-            return message != null ? message : AnsiStyles.DIM + json.substring(0, Math.min(50, json.length())) + AnsiStyles.RESET;
-        } catch (Exception e) {
-            return AnsiStyles.DIM + truncate(json, 80) + AnsiStyles.RESET;
-        }
-    }
-    
-    /**
-     * 从 JSON 字符串中提取字符串值
-     */
-    private String extractJsonValue(String json, String key) {
-        try {
-            // 简单的正则提取
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "\"" + key + "\"\\s*:\\s*\"([^\"]*)\"");
-            java.util.regex.Matcher matcher = pattern.matcher(json);
-            if (matcher.find()) {
-                return matcher.group(1);
-            }
-        } catch (Exception e) {
-            // 忽略
-        }
-        return null;
-    }
-    
-    /**
-     * 从 JSON 字符串中提取整数值
-     */
-    private int extractJsonInt(String json, String key) {
-        try {
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(
-                "\"" + key + "\"\\s*:\\s*(\\d+)");
-            java.util.regex.Matcher matcher = pattern.matcher(json);
-            if (matcher.find()) {
-                return Integer.parseInt(matcher.group(1));
-            }
-        } catch (Exception e) {
-            // 忽略
-        }
-        return 0;
-    }
-    
-    /**
      * 格式化 Skill 调用结束
      */
+    @Override
     public String formatSkillCallEnd(String skillName, boolean success, String summary) {
         StringBuilder sb = new StringBuilder();
         
@@ -338,57 +256,150 @@ public class DefaultOutputFormatter implements OutputFormatter {
      * 获取工具的显示名称（根据参数推断）
      */
     private String getDisplayName(String toolName, Map<String, Object> params) {
-        switch (toolName) {
-            case "execute_command":
+        if (toolName == null) return "Unknown";
+        return switch (toolName) {
+            case "Bash" -> {
                 Object cmd = params.get("command");
                 if (cmd != null) {
-                    String cmdStr = cmd.toString();
-                    // 显示命令的关键部分（前 30 字符）
-                    return truncate(cmdStr, 30);
+                    yield truncate(cmd.toString(), 30);
                 }
-                return "执行命令";
-            
-            case "read_file":
-                Object path = params.get("path");
+                yield "执行命令";
+            }
+            case "Read" -> {
+                Object path = params.get("filePath");
                 if (path != null) {
-                    return path.toString();
+                    yield path.toString();
                 }
-                return "读取文件";
-            
-            case "write_file":
-                Object writePath = params.get("path");
+                yield "读取文件";
+            }
+            case "Write" -> {
+                Object writePath = params.get("filePath");
                 if (writePath != null) {
-                    return writePath.toString();
+                    yield writePath.toString();
                 }
-                return "写入文件";
-            
-            case "search_code":
+                yield "写入文件";
+            }
+            case "Edit" -> {
+                Object editPath = params.get("filePath");
+                if (editPath != null) {
+                    yield editPath.toString();
+                }
+                yield "编辑文件";
+            }
+            case "Grep" -> {
                 Object pattern = params.get("pattern");
                 if (pattern != null) {
-                    return "\"" + truncate(pattern.toString(), 20) + "\"";
+                    yield "\"" + truncate(pattern.toString(), 20) + "\"";
                 }
-                return "搜索代码";
-            
-            default:
-                return "";
-        }
+                yield "搜索代码";
+            }
+            case "Glob" -> {
+                Object globPattern = params.get("pattern");
+                if (globPattern != null) {
+                    yield globPattern.toString();
+                }
+                yield "查找文件";
+            }
+            case "WebFetch" -> {
+                Object url = params.get("url");
+                if (url != null) {
+                    yield url.toString();
+                }
+                yield "获取网页";
+            }
+            case "LSP" -> {
+                Object lspPath = params.get("filePath");
+                if (lspPath != null) {
+                    yield lspPath.toString();
+                }
+                yield "LSP 诊断";
+            }
+            case "TodoWrite" -> "任务管理";
+            case "Skill" -> {
+                Object skillName = params.get("name");
+                if (skillName != null) {
+                    yield skillName.toString();
+                }
+                yield "加载技能";
+            }
+            case "AskUser" -> {
+                Object question = params.get("question");
+                if (question != null) {
+                    yield truncate(question.toString(), 30);
+                }
+                yield "询问用户";
+            }
+            case "ViewCode" -> {
+                Object viewPath = params.get("filePath");
+                if (viewPath != null) {
+                    yield viewPath.toString();
+                }
+                yield "查看代码";
+            }
+            case "SearchWeb" -> {
+                Object query = params.get("query");
+                if (query != null) {
+                    yield truncate(query.toString(), 30);
+                }
+                yield "搜索网页";
+            }
+            case "ListDirectory" -> {
+                Object dirPath = params.get("path");
+                if (dirPath != null) {
+                    yield dirPath.toString();
+                }
+                yield "列出目录";
+            }
+            case "Command" -> {
+                Object mcpCmd = params.get("command");
+                if (mcpCmd != null) {
+                    yield mcpCmd.toString();
+                }
+                yield "执行命令";
+            }
+            case "Resource" -> {
+                Object uri = params.get("uri");
+                if (uri != null) {
+                    yield uri.toString();
+                }
+                yield "获取资源";
+            }
+            case "Prompt" -> {
+                Object promptName = params.get("name");
+                if (promptName != null) {
+                    yield promptName.toString();
+                }
+                yield "使用提示";
+            }
+            default -> "";
+        };
     }
     
     /**
      * 判断是否为关键参数
      */
     private boolean isKeyParam(String toolName, String paramName) {
-        switch (toolName) {
-            case "execute_command":
-                return "command".equals(paramName) || "timeout".equals(paramName);
-            case "read_file":
-            case "write_file":
-                return "path".equals(paramName);
-            case "search_code":
-                return "pattern".equals(paramName) || "path".equals(paramName);
-            default:
-                return true;
-        }
+        if (toolName == null || paramName == null) return false;
+        return switch (toolName) {
+            case "Bash" -> "command".equals(paramName);
+            case "Read" -> "filePath".equals(paramName);
+            case "Write" -> "filePath".equals(paramName);
+            case "Edit" -> "filePath".equals(paramName);
+            case "Grep" -> "pattern".equals(paramName) || "query".equals(paramName);
+            case "Glob" -> "pattern".equals(paramName);
+            case "WebFetch" -> "url".equals(paramName);
+            case "LSP" -> "filePath".equals(paramName);
+            case "TodoWrite" -> false;
+            case "Skill" -> "name".equals(paramName);
+            case "AskUser" -> "question".equals(paramName);
+            case "ViewCode" -> "filePath".equals(paramName);
+            case "SearchWeb" -> "query".equals(paramName);
+            case "ListDirectory" -> "path".equals(paramName);
+            case "Command" -> "command".equals(paramName);
+            case "Resource" -> "uri".equals(paramName);
+            case "Prompt" -> "name".equals(paramName);
+            default -> false;
+        };
     }
     
     /**

@@ -260,7 +260,7 @@ public class OpenAIClient implements LLMClient {
                                         }
                                     }
                                 } catch (Exception parseError) {
-                                    // 忽略解析错误，继续处理
+                                    log.debug("SSE parse error, skipping chunk: {}", parseError.getMessage());
                                 }
                             }
                         }

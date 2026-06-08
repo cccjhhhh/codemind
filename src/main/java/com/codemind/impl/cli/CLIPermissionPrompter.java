@@ -18,23 +18,25 @@ import java.util.Scanner;
  * 注意：此类从 CLI 内部类提取为独立类，
  *       符合"内部类不应实现接口"的架构约束。
  */
-public class CLIPermissionPrompter implements PermissionPrompter {
+public class CLIPermissionPrompter implements PermissionPrompter, AutoCloseable {
 
     private final OutputFormatter outputFormatter;
+    private final Scanner scanner;
 
     public CLIPermissionPrompter(OutputFormatter outputFormatter) {
         this.outputFormatter = outputFormatter;
+        this.scanner = new Scanner(System.in);
     }
 
     public CLIPermissionPrompter() {
         this.outputFormatter = new DefaultOutputFormatter();
+        this.scanner = new Scanner(System.in);
     }
 
     @Override
     public Decision prompt(String toolName, String context) {
         System.out.print(outputFormatter.formatPermissionPrompt(toolName, context));
 
-        Scanner scanner = new Scanner(System.in);
         String input = scanner.nextLine().trim().toLowerCase();
 
         switch (input) {
@@ -52,5 +54,10 @@ public class CLIPermissionPrompter implements PermissionPrompter {
             default:
                 return Decision.DENY;
         }
+    }
+
+    @Override
+    public void close() {
+        scanner.close();
     }
 }

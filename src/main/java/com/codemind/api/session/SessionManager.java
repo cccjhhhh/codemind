@@ -18,11 +18,6 @@ public interface SessionManager {
     SessionContext getSession(String sessionId);
     
     /**
-     * 获取或创建会话（如果不存在则创建）
-     */
-    SessionContext getOrCreateSession(String sessionId);
-    
-    /**
      * 关闭会话
      */
     void closeSession(String sessionId);
@@ -38,9 +33,4 @@ public interface SessionManager {
      * 获取活跃会话数量
      */
     int getActiveSessionCount();
-    
-    /**
-     * 清理所有会话
-     */
-    void clearAllSessions();
 }

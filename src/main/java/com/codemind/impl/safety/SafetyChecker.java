@@ -163,13 +163,6 @@ public class SafetyChecker {
                lowerInput.contains("override");
     }
     
-    /**
-     * 检查文件大小是否安全
-     */
-    public boolean isFileSizeSafe(long sizeBytes) {
-        return sizeBytes <= MAX_FILE_SIZE_MB * 1024 * 1024;
-    }
-    
     // ==================== 敏感信息过滤 ====================
     
     /**
@@ -192,23 +185,6 @@ public class SafetyChecker {
         return sanitized;
     }
     
-    /**
-     * 检查输出是否包含敏感信息
-     */
-    public boolean containsSensitiveInfo(String output) {
-        if (output == null || output.isEmpty()) {
-            return false;
-        }
-        
-        for (Pattern pattern : SENSITIVE_PATTERNS) {
-            if (pattern.matcher(output).find()) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
     // ==================== 路径安全检查 ====================
     
     /**
@@ -219,22 +195,6 @@ public class SafetyChecker {
             return false;
         }
         return PATH_TRAVERSAL.matcher(input).find();
-    }
-    
-    /**
-     * 检查是否为危险命令
-     */
-    public boolean isDangerousCommand(String input) {
-        if (input == null) {
-            return false;
-        }
-        
-        for (Pattern pattern : CMD_DANGEROUS_PATTERNS) {
-            if (pattern.matcher(input).find()) {
-                return true;
-            }
-        }
-        return false;
     }
     
     /**
@@ -261,51 +221,5 @@ public class SafetyChecker {
      */
     public boolean isPathSafe(Path path) {
         return isPathSafe(path.toString());
-    }
-    
-    /**
-     * 规范化路径（解析 .. 等相对路径）
-     */
-    public Path sanitizePath(String input) {
-        if (input == null) {
-            return null;
-        }
-        
-        try {
-            Path path = Path.of(input);
-            // 解析相对路径（移除 .. 等）
-            return path.toAbsolutePath().normalize();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-    
-    /**
-     * 检查文件路径是否在允许的目录下
-     */
-    public boolean isWithinAllowedDir(Path filePath, Path allowedDir) {
-        try {
-            Path normalizedFile = filePath.toAbsolutePath().normalize();
-            Path normalizedDir = allowedDir.toAbsolutePath().normalize();
-            return normalizedFile.startsWith(normalizedDir);
-        } catch (Exception e) {
-            return false;
-        }
-    }
-    
-    /**
-     * 获取危险命令的描述
-     */
-    public String getDangerousCommandReason(String input) {
-        if (input == null) {
-            return null;
-        }
-        
-        for (Pattern pattern : CMD_DANGEROUS_PATTERNS) {
-            if (pattern.matcher(input).find()) {
-                return "危险命令模式: " + pattern.pattern();
-            }
-        }
-        return null;
     }
 }
