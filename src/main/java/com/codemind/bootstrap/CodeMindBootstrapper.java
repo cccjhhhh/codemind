@@ -49,6 +49,7 @@ public class CodeMindBootstrapper {
         toolRegistry.register(new GlobTool());
         toolRegistry.register(new BashTool());
         toolRegistry.register(new WebFetchTool());
+        toolRegistry.register(new TodoTool());
 
         // 3. 配置加载
         var settings = SettingsLoader.loadChain(projectDir);
