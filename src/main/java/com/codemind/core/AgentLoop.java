@@ -145,7 +145,8 @@ public class AgentLoop {
             }
 
             List<Message> history = context.getManagedHistory();
-            List<ToolDefinition> tools = toolRegistry.getAllDefinitions();
+            // 关键：按 skill.allowedTools 过滤工具，避免 LLM 看到不被允许的工具（如 code_review 没声明 Write 就不会拿到）
+            List<ToolDefinition> tools = toolRegistry.getDefinitionsForSkill(context.getActiveSkill());
 
             outputHandler.accept(outputFormatter.formatThinkingStart());
 
@@ -283,6 +284,29 @@ public class AgentLoop {
         }
 
         return new AgentTurnResult(fullText.get(), toolCalls.get());
+    }
+
+    // ==================== 子 Agent 支持 ====================
+
+    /**
+     * 创建子 Agent（供 Task 工具使用）。
+     * 子 Agent：
+     * - 不跑 SkillRouter（避免递归激活 skill）
+     * - 共享主 Agent 的 toolRegistry、permissionGate
+     * - 最大迭代 15 轮
+     * - 超时 60 秒
+     */
+    public AgentLoop createSubAgent() {
+        return new AgentLoop(
+            this.llmClient,
+            this.toolRegistry,
+            this.permissionGate,
+            this.outputFormatter,
+            15,          // maxIterations（子 Agent 减半）
+            60,          // maxExecutionTimeSeconds
+            null,        // skillRouter = null（不激活 skill）
+            null         // promptBuilder = null（用默认 system message）
+        );
     }
 
     // ==================== 内部类 ====================
