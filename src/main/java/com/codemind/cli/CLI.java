@@ -75,6 +75,9 @@ public class CLI implements Runnable {
     // PermissionPrompter 引用
     private PermissionPrompter permissionPrompter = new CLIPermissionPrompter(outputFormatter);
     
+    // Scanner for user input (reused to avoid resource leak)
+    private Scanner scanner;
+    
     @Option(names = {"-c", "--config"}, description = "配置文件路径")
     private String configPath;
     
@@ -114,9 +117,7 @@ public class CLI implements Runnable {
         SessionContext context = bootResult.session();
         var skillRouter = bootResult.skillRouter();
         var promptBuilder = bootResult.promptBuilder();
-
-        // Model manager for switching
-        ModelManager modelManager = new ModelManager();
+        ModelManager modelManager = bootResult.modelManager();
 
         // Display current model
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
@@ -128,60 +129,74 @@ public class CLI implements Runnable {
                            DIM + "quit" + RESET + " 退出");
         System.out.println();
         
-        // 交互式循环
-        Scanner scanner = new Scanner(System.in);
-        while (true) {
-            // 显示带模型信息的提示符
-            printPrompt(modelManager);
-            String input = scanner.nextLine();
-            
-            if (input == null || input.trim().isEmpty()) {
-                continue;
-            }
-            
-            // 处理命令
-            if (input.startsWith("/")) {
-                // 检查是否需要切换模型（返回新的 ModelConfig 表示需要更新）
-                ModelConfig newModel = handleCommand(input, modelManager, scanner);
-                if (newModel != null) {
-                    // 模型已切换，重新创建客户端
-                    try {
-                        LLMClient newClient = ModelFactory.create(newModel);
-                        agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter, promptBuilder);
-                        System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
-                        System.out.println();
-                    } catch (Exception e) {
-                        System.out.println(RED + "创建模型客户端失败: " + e.getMessage() + RESET);
-                        // 切换回原来的模型
-                        modelManager.switchModel(modelManager.getCurrentModelId());
-                    }
+        // 交互式循环 - 使用类字段 scanner 避免资源泄漏
+        this.scanner = new Scanner(System.in);
+        try {
+            while (true) {
+                // 显示带模型信息的提示符
+                printPrompt(modelManager);
+                String input = scanner.nextLine();
+                
+                if (input == null || input.trim().isEmpty()) {
+                    continue;
                 }
-                continue;
+                
+                // 处理命令
+                if (input.startsWith("/")) {
+                    // 检查是否需要切换模型（返回新的 ModelConfig 表示需要更新）
+                    ModelConfig newModel = handleCommand(input, modelManager, scanner);
+                    if (newModel != null) {
+                        // 模型已切换，重新创建客户端
+                        try {
+                            LLMClient newClient = ModelFactory.create(newModel);
+                            agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter, promptBuilder);
+                            System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
+                            System.out.println();
+                        } catch (Exception e) {
+                            System.out.println(RED + "创建模型客户端失败: " + e.getMessage() + RESET);
+                            // 切换回原来的模型
+                            modelManager.switchModel(modelManager.getCurrentModelId());
+                        }
+                    }
+                    continue;
+                }
+                
+                if ("quit".equalsIgnoreCase(input) || "exit".equalsIgnoreCase(input)) {
+                    // 保存当前会话
+                    sessionManager.closeSession(context.getSessionId());
+                    System.out.println(YELLOW + "会话已保存，再见！" + RESET);
+                    break;
+                }
+                
+                // 调用 Agent（流式输出）
+                System.out.println();
+                AgentResult result = agentLoop.runStream(input, context, token -> {
+                    // 流式输出：实时打印 token
+                    System.out.print(token);
+                    System.out.flush();
+                });
+                
+                // 确保换行
+                System.out.println();
+                
+                // 检查结果
+                if (!result.isSuccess()) {
+                    System.out.println(RED + "错误: " + result.getError() + RESET);
+                }
+                System.out.println();
             }
-            
-            if ("quit".equalsIgnoreCase(input) || "exit".equalsIgnoreCase(input)) {
-                // 保存当前会话
-                sessionManager.closeSession(context.getSessionId());
-                System.out.println(YELLOW + "会话已保存，再见！" + RESET);
-                break;
+        } finally {
+            // Close scanners to avoid resource leaks
+            if (scanner != null) {
+                scanner.close();
             }
-            
-            // 调用 Agent（流式输出）
-            System.out.println();
-            AgentResult result = agentLoop.runStream(input, context, token -> {
-                // 流式输出：实时打印 token
-                System.out.print(token);
-                System.out.flush();
-            });
-            
-            // 确保换行
-            System.out.println();
-            
-            // 检查结果
-            if (!result.isSuccess()) {
-                System.out.println(RED + "错误: " + result.getError() + RESET);
+            if (permissionPrompter instanceof AutoCloseable) {
+                try {
+                    ((AutoCloseable) permissionPrompter).close();
+                } catch (Exception e) {
+                    // Ignore
+                }
             }
-            System.out.println();
         }
     }
     
@@ -385,7 +400,7 @@ public class CLI implements Runnable {
         System.out.println("  " + CYAN + "/switch" + RESET + "          切换模型（交互式选择）");
         System.out.println("  " + CYAN + "/sessions" + RESET + "        列出已保存的会话");
         System.out.println("  " + CYAN + "/load [id]" + RESET + "       加载指定会话");
-        System.out.println("  " + CYAN + "/allow <权限>" + RESET + "   授权危险操作（write_file, execute_command）");
+        System.out.println("  " + CYAN + "/allow <权限>" + RESET + "   授权危险操作（Write, Bash）");
         System.out.println("  " + CYAN + "/permissions" + RESET + "     显示权限状态");
         System.out.println("  " + CYAN + "/help" + RESET + "            显示帮助");
         System.out.println("  " + DIM + "quit / exit" + RESET + "      退出程序");
@@ -401,8 +416,8 @@ public class CLI implements Runnable {
         if (parts.length < 2) {
             System.out.println();
             System.out.println(YELLOW + "可授权的工具:" + RESET);
-            System.out.println("  " + CYAN + "write" + RESET + "           写入文件");
-            System.out.println("  " + CYAN + "bash" + RESET + "            执行命令");
+            System.out.println("  " + CYAN + "Write" + RESET + "           写入文件");
+            System.out.println("  " + CYAN + "Bash" + RESET + "            执行命令");
             System.out.println("  " + CYAN + "all" + RESET + "            授权所有工具");
             System.out.println();
             System.out.println("用法: " + CYAN + "/allow <工具名>" + RESET);

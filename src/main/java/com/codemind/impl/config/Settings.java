@@ -1,7 +1,9 @@
 package com.codemind.impl.config;
 
+import com.codemind.api.llm.ModelConfig;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
+import java.util.Map;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Settings {
@@ -9,6 +11,8 @@ public class Settings {
     private List<String> skillProviders = List.of();
     private Permissions permissions = new Permissions();
     private ContextConfig context = new ContextConfig();
+    private Map<String, ModelConfig> models = Map.of();
+    private String currentModel = "";
 
     public List<String> getSkillDirectories() { return skillDirectories; }
     public void setSkillDirectories(List<String> skillDirectories) { this.skillDirectories = skillDirectories; }
@@ -18,6 +22,10 @@ public class Settings {
     public void setPermissions(Permissions permissions) { this.permissions = permissions; }
     public ContextConfig getContext() { return context; }
     public void setContext(ContextConfig context) { this.context = context; }
+    public Map<String, ModelConfig> getModels() { return models; }
+    public void setModels(Map<String, ModelConfig> models) { this.models = models; }
+    public String getCurrentModel() { return currentModel; }
+    public void setCurrentModel(String currentModel) { this.currentModel = currentModel; }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Permissions {

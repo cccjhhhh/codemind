@@ -76,4 +76,72 @@ class SettingsLoaderTest {
         Settings s = SettingsLoader.loadChain(tempDir, global);
         assertEquals("from_global", s.getSkillDirectories().get(0));
     }
+
+    @Test
+    @DisplayName("loads model config from global settings")
+    void loadsModelConfig() throws IOException {
+        Path global = tempDir.resolve("global_settings.json");
+        Files.writeString(global, """
+            {
+                "models": {
+                    "deepseek": {
+                        "name": "DeepSeek",
+                        "type": "openai_compatible",
+                        "baseUrl": "https://api.deepseek.com/v1",
+                        "defaultModel": "deepseek-chat",
+                        "apiKey": "sk-test"
+                    },
+                    "gpt": {
+                        "name": "GPT-4o",
+                        "type": "openai_compatible",
+                        "baseUrl": "https://api.openai.com/v1",
+                        "defaultModel": "gpt-4o",
+                        "apiKey": "sk-test2"
+                    }
+                },
+                "currentModel": "deepseek"
+            }
+            """);
+
+        Settings s = SettingsLoader.loadChain(tempDir, global);
+        assertEquals(2, s.getModels().size());
+        assertEquals("DeepSeek", s.getModels().get("deepseek").getName());
+        assertEquals("deepseek-chat", s.getModels().get("deepseek").getDefaultModel());
+        assertEquals("deepseek", s.getCurrentModel());
+    }
+
+    @Test
+    @DisplayName("project settings override currentModel but not models map")
+    void projectOverridesCurrentModel() throws IOException {
+        Path global = tempDir.resolve("global_settings.json");
+        Files.writeString(global, """
+            {
+                "models": {
+                    "deepseek": {
+                        "name": "DeepSeek",
+                        "type": "openai_compatible",
+                        "baseUrl": "https://api.deepseek.com/v1",
+                        "defaultModel": "deepseek-chat",
+                        "apiKey": "sk-test"
+                    },
+                    "gpt": {
+                        "name": "GPT-4o",
+                        "type": "openai_compatible",
+                        "baseUrl": "https://api.openai.com/v1",
+                        "defaultModel": "gpt-4o",
+                        "apiKey": "sk-test2"
+                    }
+                },
+                "currentModel": "deepseek"
+            }
+            """);
+        Files.createDirectories(tempDir.resolve(".codemind"));
+        Files.writeString(tempDir.resolve(".codemind/settings.json"), """
+            {"currentModel": "gpt"}
+            """);
+
+        Settings s = SettingsLoader.loadChain(tempDir, global);
+        assertEquals(2, s.getModels().size());
+        assertEquals("gpt", s.getCurrentModel());
+    }
 }

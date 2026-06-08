@@ -10,10 +10,13 @@ import com.codemind.core.AgentLoop;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.cli.SystemPromptBuilder;
+import com.codemind.impl.config.Settings;
 import com.codemind.impl.config.SettingsLoader;
+import com.codemind.impl.hook.*;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
 import com.codemind.impl.safety.PermissionGateImpl;
+import com.codemind.impl.safety.PermissionGateImpl.PermissionRule;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.session.SlidingWindowContextManager;
 import com.codemind.impl.skill.ClasspathSkillProvider;
@@ -21,23 +24,14 @@ import com.codemind.impl.skill.DirectorySkillProvider;
 import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillRegistry;
 import com.codemind.impl.skill.routing.SkillRouter;
-import com.codemind.impl.hook.*;
-import com.codemind.impl.safety.PermissionGateImpl.PermissionRule;
 import com.codemind.impl.tool.*;
 
 import java.nio.file.Path;
 import java.util.List;
 
-/**
- * 单类启动组装器。
- * 创建所有核心组件并从类路径自动发现技能。
- */
 public class CodeMindBootstrapper {
 
     public BootstrapResult bootstrap(Path projectDir) {
-        // 创建共享的 ModelManager 实例（避免重复创建）
-        ModelManager modelManager = new ModelManager();
-
         // 1. 基础设施
         DefaultOutputFormatter outputFormatter = new DefaultOutputFormatter();
         CLIPermissionPrompter prompter = new CLIPermissionPrompter(outputFormatter);
@@ -54,7 +48,8 @@ public class CodeMindBootstrapper {
         toolRegistry.register(new WebFetchTool());
         toolRegistry.register(new TodoTool());
 
-        // 3. 配置加载
+        // 3. 配置加载（模型配置 + 技能目录 + 权限规则 + 上下文配置）
+        SettingsLoader.ensureGlobalConfig();
         var settings = SettingsLoader.loadChain(projectDir);
 
         // 从 settings.json 加载权限规则
@@ -88,16 +83,19 @@ public class CodeMindBootstrapper {
         // 注册需要 skillRegistry 的工具
         toolRegistry.register(new LoadSkillTool(skillRegistry));
 
-        // 5. 大语言模型
+        // 5. 模型管理器（从 settings.json 读取模型配置）
+        ModelManager modelManager = new ModelManager(settings);
+
+        // 6. 大语言模型
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
 
-        // 6. 技能路由器
+        // 7. 技能路由器
         SkillRouter skillRouter = new SkillRouter(skills);
 
-        // 7. 系统提示构建器
+        // 8. 系统提示构建器
         SystemPromptBuilder promptBuilder = new SystemPromptBuilder(toolRegistry, skillRegistry);
 
-        // 8. 会话 — 使用实际模型的上下文窗口
+        // 9. 会话 — 使用实际模型的上下文窗口
         SlidingWindowContextManager contextManager = SlidingWindowContextManager.forModel(
             modelManager.getCurrentModelId()
         );
@@ -108,7 +106,7 @@ public class CodeMindBootstrapper {
         session.setWorkingDirectory(projectDir);
         session.setSystemMessage(promptBuilder.build(session));
 
-        // 9. Agent 循环
+        // 10. Agent 循环
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
             50, 300, skillRouter, promptBuilder
@@ -116,10 +114,10 @@ public class CodeMindBootstrapper {
 
         // 注册依赖 AgentLoop 的工具
         toolRegistry.register(new TaskTool(agentLoop, projectDir));
-        // 更新 system message 以包含新注册的工具
         session.setSystemMessage(promptBuilder.build(session));
 
-        return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry, permissionGate, skillRouter, promptBuilder);
+        return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry,
+            permissionGate, skillRouter, promptBuilder, modelManager, settings);
     }
 
     public record BootstrapResult(
@@ -129,6 +127,8 @@ public class CodeMindBootstrapper {
         ToolRegistry toolRegistry,
         PermissionGate permissionGate,
         SkillRouter skillRouter,
-        SystemPromptBuilder promptBuilder
+        SystemPromptBuilder promptBuilder,
+        ModelManager modelManager,
+        Settings settings
     ) {}
 }

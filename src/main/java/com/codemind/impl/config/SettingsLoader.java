@@ -2,6 +2,7 @@ package com.codemind.impl.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.io.IOException;
@@ -53,6 +54,44 @@ public class SettingsLoader {
      * Merge non-null fields from source into target.
      * For collection fields, source values replace target values (not append).
      */
+    /**
+     * 确保全局 settings.json 存在。如果不存在则创建包含默认模型配置的模板。
+     * 在首次启动时调用，提供开箱即用的体验。
+     */
+    public static Path ensureGlobalConfig() {
+        Path global = Path.of(System.getProperty("user.home"), ".codemind", "settings.json");
+        if (Files.exists(global)) return global;
+        try {
+            Files.createDirectories(global.getParent());
+            String template = """
+                {
+                    "models": {
+                        "deepseek": {
+                            "name": "DeepSeek",
+                            "type": "openai_compatible",
+                            "baseUrl": "https://api.deepseek.com/v1",
+                            "defaultModel": "deepseek-chat",
+                            "apiKey": "YOUR_DEEPSEEK_API_KEY"
+                        },
+                        "gpt": {
+                            "name": "GPT-4o",
+                            "type": "openai_compatible",
+                            "baseUrl": "https://api.openai.com/v1",
+                            "defaultModel": "gpt-4o",
+                            "apiKey": "YOUR_OPENAI_API_KEY"
+                        }
+                    },
+                    "currentModel": "deepseek"
+                }
+                """;
+            Files.writeString(global, template);
+            log.info("已创建默认全局配置: {}", global);
+        } catch (IOException e) {
+            log.warn("创建默认全局配置失败: {}", e.getMessage());
+        }
+        return global;
+    }
+
     static void merge(Settings target, Settings source) {
         if (source.getSkillDirectories() != null && !source.getSkillDirectories().isEmpty())
             target.setSkillDirectories(source.getSkillDirectories());
@@ -79,5 +118,10 @@ public class SettingsLoader {
                     target.getContext().getWindow().setStaleRounds(source.getContext().getWindow().getStaleRounds());
             }
         }
+        // 模型配置整体替换（不逐 key 合并，避免残留旧模型）
+        if (source.getModels() != null && !source.getModels().isEmpty())
+            target.setModels(source.getModels());
+        if (source.getCurrentModel() != null && !source.getCurrentModel().isEmpty())
+            target.setCurrentModel(source.getCurrentModel());
     }
 }
