@@ -19,44 +19,48 @@ public class SystemPromptBuilder {
     public String build(SessionContext context) {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("你是一个安全的 AI 编程助手 CodeMind。\n\n");
+        // 1. IDENTITY
+        sb.append("You are CodeMind, a coding agent at ")
+          .append(context.getWorkingDirectory()).append(".\n\n");
 
-        // 0. Environment context — critical for avoiding path guessing
-        sb.append("## 运行环境\n\n");
-        sb.append("- **工作目录**: `").append(context.getWorkingDirectory()).append("`\n");
-        sb.append("- **操作系统**: ").append(detectOS()).append("\n");
-        sb.append("- **Shell**: ").append(detectOS().contains("Windows") ? "cmd.exe (Windows)\n" : "sh/bash (Unix)\n");
-        sb.append("\n");
-        sb.append("**重要**: 所有 Bash 命令默认在工作目录下执行。\n");
-        sb.append("不要猜测路径，不要使用 `cd` 切换目录。\n");
-        sb.append("如果需要在不同目录执行命令，使用 Bash 工具的 `cwd` 参数。\n\n");
+        // 2. ENVIRONMENT
+        sb.append("## Environment\n\n");
+        sb.append("- **Working Directory**: `").append(context.getWorkingDirectory()).append("`\n");
+        sb.append("- **OS**: ").append(detectOS()).append("\n");
+        sb.append("- **Shell**: ").append(detectOS().contains("Windows") ? "cmd.exe" : "bash").append("\n\n");
+        sb.append("All Bash commands execute in the working directory by default. ");
+        sb.append("Do not guess paths. Use the Bash tool's `cwd` parameter if needed.\n\n");
 
-        // 1. Tool list
-        sb.append("## 可用工具\n\n");
+        // 3. AVAILABLE TOOLS
+        sb.append("## Available Tools\n\n");
         for (var def : toolRegistry.getAllDefinitions()) {
             sb.append("- **").append(def.getFunction().getName()).append("**");
             sb.append(": ").append(def.getFunction().getDescription().split("\n")[0]).append("\n");
         }
         sb.append("\n");
 
-        // 2. Skill summaries
-        sb.append("## 可用技能\n\n");
-        for (SkillDefinition skill : skills) {
-            sb.append("- **").append(skill.getName()).append("**");
-            sb.append(": ").append(skill.getDescription()).append("\n");
+        // 4. AVAILABLE SKILLS (summaries only — full content loaded on activation)
+        sb.append("## Available Skills\n\n");
+        if (skills.isEmpty()) {
+            sb.append("No skills currently loaded.\n\n");
+        } else {
+            for (SkillDefinition skill : skills) {
+                sb.append("- **").append(skill.getName()).append("**");
+                sb.append(": ").append(skill.getDescription()).append("\n");
+            }
+            sb.append("\nSkills activate automatically when the system detects a matching request. ");
+            sb.append("You can also call LoadSkill to manually load a skill.\n\n");
         }
-        sb.append("当用户请求匹配某个技能时，系统会自动激活对应技能并注入完整指令。\n");
-        sb.append("你只需要按照注入的指令逐步执行即可。\n\n");
 
-        // 3. Active skill full content
+        // 5. ACTIVE SKILL (conditionally injected)
         if (context.hasActiveSkill()) {
             SkillDefinition active = context.getActiveSkill();
             sb.append("══════════════════════════════════════════════\n");
-            sb.append("## 当前激活技能：").append(active.getName()).append("\n");
+            sb.append("## Active Skill: ").append(active.getName()).append("\n");
             sb.append("══════════════════════════════════════════════\n\n");
             sb.append(active.getFullContent()).append("\n\n");
             sb.append("══════════════════════════════════════════════\n");
-            sb.append("请严格按照以上技能指令执行。完成后用户会告诉你要做什么。\n");
+            sb.append("Follow the skill instructions above strictly.\n");
             sb.append("══════════════════════════════════════════════\n");
         }
 
