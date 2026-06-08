@@ -89,11 +89,16 @@ public class CodeMindBootstrapper {
         session.setWorkingDirectory(projectDir);
         session.setSystemMessage(promptBuilder.build(session));
 
-        // 8. Agent 循环
+        // 9. Agent 循环
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
             50, 300, skillRouter, promptBuilder
         );
+
+        // 注册依赖 AgentLoop 的工具
+        toolRegistry.register(new TaskTool(agentLoop, projectDir));
+        // 更新 system message 以包含新注册的工具
+        session.setSystemMessage(promptBuilder.build(session));
 
         return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry, permissionGate, skillRouter, promptBuilder);
     }
