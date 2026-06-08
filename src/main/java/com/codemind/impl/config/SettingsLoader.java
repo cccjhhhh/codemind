@@ -1,0 +1,83 @@
+package com.codemind.impl.config;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class SettingsLoader {
+    private static final Logger log = LoggerFactory.getLogger(SettingsLoader.class);
+    private static final ObjectMapper JSON = new ObjectMapper()
+        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    /**
+     * Load config chain: global ~/.codemind/settings.json -> project .codemind/settings.json -> project .codemind/settings.local.json
+     * Later files override earlier ones.
+     */
+    public static Settings loadChain(Path projectDir) {
+        Settings settings = new Settings();
+        Path global = Path.of(System.getProperty("user.home"), ".codemind", "settings.json");
+        loadInto(global, settings);
+        Path project = projectDir.resolve(".codemind/settings.json");
+        loadInto(project, settings);
+        Path local = projectDir.resolve(".codemind/settings.local.json");
+        loadInto(local, settings);
+        return settings;
+    }
+
+    public static Settings loadChain(Path projectDir, Path globalOverride) {
+        Settings settings = new Settings();
+        loadInto(globalOverride, settings);
+        Path project = projectDir.resolve(".codemind/settings.json");
+        loadInto(project, settings);
+        Path local = projectDir.resolve(".codemind/settings.local.json");
+        loadInto(local, settings);
+        return settings;
+    }
+
+    private static void loadInto(Path path, Settings target) {
+        if (!Files.exists(path)) return;
+        try {
+            log.debug("Loading settings from: {}", path);
+            Settings partial = JSON.readValue(path.toFile(), Settings.class);
+            merge(target, partial);
+        } catch (IOException e) {
+            log.warn("Failed to load settings from {}: {}", path, e.getMessage());
+        }
+    }
+
+    /**
+     * Merge non-null fields from source into target.
+     * For collection fields, source values replace target values (not append).
+     */
+    static void merge(Settings target, Settings source) {
+        if (source.getSkillDirectories() != null && !source.getSkillDirectories().isEmpty())
+            target.setSkillDirectories(source.getSkillDirectories());
+        if (source.getSkillProviders() != null && !source.getSkillProviders().isEmpty())
+            target.setSkillProviders(source.getSkillProviders());
+        // Merge nested objects
+        if (source.getPermissions() != null) {
+            if (source.getPermissions().getRules() != null && !source.getPermissions().getRules().isEmpty())
+                target.getPermissions().setRules(source.getPermissions().getRules());
+            if (source.getPermissions().getDeny() != null && !source.getPermissions().getDeny().isEmpty())
+                target.getPermissions().setDeny(source.getPermissions().getDeny());
+        }
+        if (source.getContext() != null) {
+            if (source.getContext().getTruncation() != null) {
+                if (source.getContext().getTruncation().getSpillThresholdChars() != 2000)
+                    target.getContext().getTruncation().setSpillThresholdChars(source.getContext().getTruncation().getSpillThresholdChars());
+                if (source.getContext().getTruncation().getSpillDir() != null)
+                    target.getContext().getTruncation().setSpillDir(source.getContext().getTruncation().getSpillDir());
+            }
+            if (source.getContext().getWindow() != null) {
+                if (source.getContext().getWindow().getTargetRatio() != 0.8)
+                    target.getContext().getWindow().setTargetRatio(source.getContext().getWindow().getTargetRatio());
+                if (source.getContext().getWindow().getStaleRounds() != 5)
+                    target.getContext().getWindow().setStaleRounds(source.getContext().getWindow().getStaleRounds());
+            }
+        }
+    }
+}
