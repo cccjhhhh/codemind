@@ -67,6 +67,9 @@ public class CodeMindBootstrapper {
             .map(e -> new SkillDefinition(e.metadata()))
             .toList();
 
+        // 注册需要 skillRegistry 的工具
+        toolRegistry.register(new LoadSkillTool(skillRegistry));
+
         // 5. 大语言模型
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
 
