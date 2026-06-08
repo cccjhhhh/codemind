@@ -9,13 +9,16 @@ import com.codemind.core.AgentLoop;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.cli.SystemPromptBuilder;
+import com.codemind.impl.config.SettingsLoader;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.session.SlidingWindowContextManager;
+import com.codemind.impl.skill.ClasspathSkillProvider;
+import com.codemind.impl.skill.DirectorySkillProvider;
 import com.codemind.impl.skill.SkillDefinition;
-import com.codemind.impl.skill.SkillLoader;
+import com.codemind.impl.skill.SkillRegistry;
 import com.codemind.impl.skill.routing.SkillRouter;
 import com.codemind.impl.tool.*;
 
@@ -29,6 +32,9 @@ import java.util.List;
 public class CodeMindBootstrapper {
 
     public BootstrapResult bootstrap(Path projectDir) {
+        // 创建共享的 ModelManager 实例（避免重复创建）
+        ModelManager modelManager = new ModelManager();
+
         // 1. 基础设施
         DefaultOutputFormatter outputFormatter = new DefaultOutputFormatter();
         CLIPermissionPrompter prompter = new CLIPermissionPrompter(outputFormatter);
@@ -44,22 +50,35 @@ public class CodeMindBootstrapper {
         toolRegistry.register(new BashTool());
         toolRegistry.register(new WebFetchTool());
 
-        // 3. 技能 — 从类路径自动发现，无需注册代码
-        SkillLoader skillLoader = new SkillLoader();
-        List<SkillDefinition> skills = skillLoader.loadAllFromClasspath(null);
+        // 3. 配置加载
+        var settings = SettingsLoader.loadChain(projectDir);
 
-        // 4. 大语言模型
-        LLMClient llmClient = ModelFactory.create(new ModelManager().getCurrentModel());
+        // 4. 技能 — SkillRegistry 多来源发现
+        SkillRegistry skillRegistry = new SkillRegistry();
+        skillRegistry.addProvider(new ClasspathSkillProvider(null));
+        if (!settings.getSkillDirectories().isEmpty()) {
+            List<Path> dirs = settings.getSkillDirectories().stream()
+                .map(d -> d.startsWith("~") ? Path.of(System.getProperty("user.home"), d.substring(1)) : Path.of(d))
+                .toList();
+            skillRegistry.addProvider(new DirectorySkillProvider(dirs));
+        }
+        skillRegistry.refresh();
+        List<SkillDefinition> skills = skillRegistry.listAll().stream()
+            .map(e -> new SkillDefinition(e.metadata()))
+            .toList();
 
-        // 5. 技能路由器
-        SkillRouter skillRouter = new SkillRouter(llmClient, skills);
+        // 5. 大语言模型
+        LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
 
-        // 6. 系统提示构建器
-        SystemPromptBuilder promptBuilder = new SystemPromptBuilder(toolRegistry, skills);
+        // 6. 技能路由器
+        SkillRouter skillRouter = new SkillRouter(skills);
 
-        // 7. 会话 — 使用实际模型的上下文窗口
+        // 7. 系统提示构建器
+        SystemPromptBuilder promptBuilder = new SystemPromptBuilder(toolRegistry, skillRegistry);
+
+        // 8. 会话 — 使用实际模型的上下文窗口
         SlidingWindowContextManager contextManager = SlidingWindowContextManager.forModel(
-            new ModelManager().getCurrentModelId()
+            modelManager.getCurrentModelId()
         );
         SessionManagerImpl sessionManager = new SessionManagerImpl(contextManager);
         SessionContext session = sessionManager.createSession();

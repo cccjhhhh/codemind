@@ -3,17 +3,19 @@ package com.codemind.impl.cli;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.impl.skill.SkillEntry;
+import com.codemind.impl.skill.SkillRegistry;
 
 import java.util.List;
 
 public class SystemPromptBuilder {
 
     private final ToolRegistry toolRegistry;
-    private final List<SkillDefinition> skills;
+    private final SkillRegistry skillRegistry;
 
-    public SystemPromptBuilder(ToolRegistry toolRegistry, List<SkillDefinition> skills) {
+    public SystemPromptBuilder(ToolRegistry toolRegistry, SkillRegistry skillRegistry) {
         this.toolRegistry = toolRegistry;
-        this.skills = skills;
+        this.skillRegistry = skillRegistry;
     }
 
     public String build(SessionContext context) {
@@ -40,13 +42,12 @@ public class SystemPromptBuilder {
         sb.append("\n");
 
         // 4. AVAILABLE SKILLS (summaries only — full content loaded on activation)
-        sb.append("## Available Skills\n\n");
-        if (skills.isEmpty()) {
-            sb.append("No skills currently loaded.\n\n");
-        } else {
-            for (SkillDefinition skill : skills) {
-                sb.append("- **").append(skill.getName()).append("**");
-                sb.append(": ").append(skill.getDescription()).append("\n");
+        List<SkillEntry> allSkills = skillRegistry.listAll();
+        if (!allSkills.isEmpty()) {
+            sb.append("## Available Skills\n\n");
+            for (SkillEntry entry : allSkills) {
+                sb.append("- **").append(entry.name()).append("**");
+                sb.append(": ").append(entry.metadata().description()).append("\n");
             }
             sb.append("\nSkills activate automatically when the system detects a matching request. ");
             sb.append("You can also call LoadSkill to manually load a skill.\n\n");
