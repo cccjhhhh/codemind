@@ -2,6 +2,7 @@ package com.codemind.bootstrap;
 
 import com.codemind.api.llm.LLMClient;
 import com.codemind.api.safety.PermissionGate;
+import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
 import com.codemind.api.tool.ToolRegistry;
@@ -20,6 +21,8 @@ import com.codemind.impl.skill.DirectorySkillProvider;
 import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillRegistry;
 import com.codemind.impl.skill.routing.SkillRouter;
+import com.codemind.impl.hook.*;
+import com.codemind.impl.safety.PermissionGateImpl.PermissionRule;
 import com.codemind.impl.tool.*;
 
 import java.nio.file.Path;
@@ -53,6 +56,20 @@ public class CodeMindBootstrapper {
 
         // 3. 配置加载
         var settings = SettingsLoader.loadChain(projectDir);
+
+        // 从 settings.json 加载权限规则
+        if (!settings.getPermissions().getRules().isEmpty()) {
+            var rules = settings.getPermissions().getRules().stream()
+                .map(r -> new PermissionRule(r.getTool(), r.getCondition(), PermissionLevel.valueOf(r.getLevel())))
+                .toList();
+            permissionGate.setRules(rules);
+        }
+
+        // 注册 Hook 链（顺序决定执行顺序）
+        toolRegistry.registerHook(new SafetyPreHook());
+        toolRegistry.registerHook(new PermissionPreHook(permissionGate));
+        toolRegistry.registerHook(new MetricsHook());
+        toolRegistry.registerHook(new TruncationHook());
 
         // 4. 技能 — SkillRegistry 多来源发现
         SkillRegistry skillRegistry = new SkillRegistry();
