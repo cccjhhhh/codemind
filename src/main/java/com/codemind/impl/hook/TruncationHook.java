@@ -30,6 +30,16 @@ public class TruncationHook implements ToolHook {
         this.spillDir = spillDir;
     }
 
+    /**
+     * 创建带 sessionId 隔离的 spill hook。
+     * 文件写入 {spillDir}/{sessionId}/{timestamp}-{toolName}.md，
+     * 与 SessionManagerImpl.closeSession 的清理路径一致。
+     */
+    public TruncationHook(int spillThreshold, String spillDirBase, String sessionId) {
+        this.spillThreshold = spillThreshold;
+        this.spillDir = Path.of(spillDirBase, sessionId);
+    }
+
     @Override
     public void preExecute(String toolName, Map<String, Object> args) {}
 

@@ -40,3 +40,5 @@ docs
 
 # Local test files
 test/
+
+.codemind

@@ -65,7 +65,10 @@ public class PermissionGateImpl implements PermissionGate {
     public boolean requestPermission(String toolName, String context) {
         if (permissionPrompter == null) return false;
         PermissionPrompter.Decision decision = permissionPrompter.prompt(toolName, context);
-        return decision == PermissionPrompter.Decision.ALLOW
-            || decision == PermissionPrompter.Decision.ALLOW_SESSION;
+        if (decision == PermissionPrompter.Decision.ALLOW_SESSION) {
+            runtimeLevels.put(toolName, PermissionLevel.ALLOW);
+            return true;
+        }
+        return decision == PermissionPrompter.Decision.ALLOW;
     }
 }

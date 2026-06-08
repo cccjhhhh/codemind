@@ -64,7 +64,6 @@ public class CodeMindBootstrapper {
         toolRegistry.registerHook(new SafetyPreHook());
         toolRegistry.registerHook(new PermissionPreHook(permissionGate));
         toolRegistry.registerHook(new MetricsHook());
-        toolRegistry.registerHook(new TruncationHook());
 
         // 4. 技能 — SkillRegistry 多来源发现
         SkillRegistry skillRegistry = new SkillRegistry();
@@ -104,6 +103,14 @@ public class CodeMindBootstrapper {
         SessionManagerImpl sessionManager = new SessionManagerImpl(contextManager);
         SessionContext session = sessionManager.createSession();
         session.setWorkingDirectory(projectDir);
+
+        // TruncationHook（在 session 之后创建，以获取 sessionId 隔离 spill 路径）
+        var truncationCfg = settings.getContext().getTruncation();
+        toolRegistry.registerHook(new TruncationHook(
+            truncationCfg.getSpillThresholdChars(),
+            truncationCfg.getSpillDir(),
+            session.getSessionId()
+        ));
         session.setSystemMessage(promptBuilder.build(session));
 
         // 10. Agent 循环

@@ -3,12 +3,15 @@ package com.codemind.api.session;
 import com.codemind.api.llm.Message;
 import com.codemind.impl.skill.SkillDefinition;
 
+import com.codemind.api.llm.ToolCall;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 会话上下文
@@ -23,7 +26,8 @@ import java.util.Map;
 public class SessionContext {
     
     // 默认最大历史消息数量（防止内存无限增长）
-    private static final int DEFAULT_MAX_HISTORY_SIZE = 100;
+    // 设大值让 SlidingWindowContextManager（能正确处理 ASSISTANT+TOOL 配对）主导裁剪
+    private static final int DEFAULT_MAX_HISTORY_SIZE = 10000;
     
     private final String sessionId;
     private Path workingDirectory;
@@ -62,8 +66,30 @@ public class SessionContext {
         history.add(message);
         lastActiveAt = LocalDateTime.now();
         
-        // 检查容量限制，超出时删除最早的消息
-        while (history.size() > maxHistorySize) {
+        // 容量限制：移除最旧消息（但保持 ASSISTANT(tc)+TOOL 配对完整性）
+        while (history.size() > maxHistorySize && !history.isEmpty()) {
+            Message first = history.get(0);
+
+            // 头部是 ASSISTANT(tc) → 连带移除其 TOOL 响应
+            if (first.getRole() == Message.Role.ASSISTANT && first.hasToolCalls()) {
+                Set<String> ids = first.getToolCalls().stream()
+                    .map(ToolCall::getId)
+                    .collect(Collectors.toSet());
+                history.remove(0);
+                while (!history.isEmpty() && history.get(0).getRole() == Message.Role.TOOL
+                       && ids.contains(history.get(0).getToolCallId())) {
+                    history.remove(0);
+                }
+                continue;
+            }
+
+            // 头部是孤儿 TOOL（配对 ASSISTANT 已被移除）
+            if (first.getRole() == Message.Role.TOOL) {
+                history.remove(0);
+                continue;
+            }
+
+            // USER 或纯文本 ASSISTANT 可安全单独移除
             history.remove(0);
         }
     }
