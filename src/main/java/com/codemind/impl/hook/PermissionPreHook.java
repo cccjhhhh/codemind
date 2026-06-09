@@ -4,8 +4,15 @@ import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.ToolHook;
 import com.codemind.api.tool.ToolResult;
+
 import java.util.Map;
 
+/**
+ * 权限前置钩子 — 工具执行前的权限确认。
+ * 根据工具的默认权限等级（DENY/ASK/ALLOW）决定是否放行：
+ * DENY 直接拒绝，ASK 弹窗询问用户，ALLOW 自动通过。
+ * 属于第二层防线，接在 SafetyPreHook 之后。
+ */
 public class PermissionPreHook implements ToolHook {
 
     private final PermissionGate permissionGate;

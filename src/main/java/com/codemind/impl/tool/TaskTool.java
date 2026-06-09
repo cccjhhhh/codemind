@@ -9,12 +9,19 @@ import com.codemind.core.AgentResult;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 public class TaskTool implements Tool {
 
+    private static final Logger log = LoggerFactory.getLogger(TaskTool.class);
     private static final ObjectMapper JSON = new ObjectMapper();
     private final AgentLoop parentLoop;
     private final Path workingDirectory;
@@ -63,6 +70,9 @@ public class TaskTool implements Tool {
 
             AgentResult result = subAgent.run(instruction, subContext);
 
+            // 清理子 Agent 产生的临时文件（temp_*）
+            cleanupTempFiles();
+
             if (result.isSuccess()) {
                 return ToolResult.success(result.getMessage());
             } else {
@@ -70,6 +80,22 @@ public class TaskTool implements Tool {
             }
         } catch (Exception e) {
             return ToolResult.failure("子任务异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 清理子 Agent 遗留的临时文件（如 temp_read_*.java）。
+     * 匹配工作目录下 temp_ 前缀的文件，避免残留。
+     */
+    private void cleanupTempFiles() {
+        try {
+            try (Stream<Path> files = Files.list(workingDirectory)) {
+                files.filter(p -> p.getFileName().toString().startsWith("temp_"))
+                     .peek(p -> log.debug("清理子 Agent 临时文件: {}", p.getFileName()))
+                     .forEach(p -> p.toFile().delete());
+            }
+        } catch (IOException e) {
+            log.debug("清理临时文件失败: {}", e.getMessage());
         }
     }
 }

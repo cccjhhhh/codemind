@@ -2,10 +2,16 @@ package com.codemind.impl.hook;
 
 import com.codemind.api.tool.ToolHook;
 import com.codemind.api.tool.ToolResult;
+
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+/**
+ * 安全前置钩子 — 拦截危险命令。
+ * 在 Bash 工具执行前匹配预定义的危险命令模式（rm -rf、dd、shutdown 等），
+ * 匹配则抛出 SecurityException 阻止执行。属于第一层防线。
+ */
 public class SafetyPreHook implements ToolHook {
 
     private static final List<Pattern> DANGEROUS_PATTERNS = List.of(

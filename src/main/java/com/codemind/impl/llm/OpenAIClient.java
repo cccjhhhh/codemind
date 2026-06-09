@@ -289,9 +289,10 @@ public class OpenAIClient implements LLMClient {
             return new HashMap<>();
         }
         try {
-            return MAPPER.readValue(json, 
+            return MAPPER.readValue(json,
                 new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
         } catch (Exception e) {
+            log.warn("工具参数 JSON 解析失败: {}", e.getMessage());
             return new HashMap<>();
         }
     }

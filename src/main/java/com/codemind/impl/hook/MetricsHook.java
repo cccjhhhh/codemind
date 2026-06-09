@@ -9,6 +9,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 指标钩子 — 记录工具调用的执行耗时、结果大小、调用次数。
+ * preExecute 递增调用计数器，postExecute 打印 INFO 日志（toolName, 耗时, 结果长度, 状态）。
+ * 无副作用，仅用于监控和调试。
+ */
 public class MetricsHook implements ToolHook {
 
     private static final Logger log = LoggerFactory.getLogger(MetricsHook.class);

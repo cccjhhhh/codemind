@@ -94,6 +94,23 @@ public class SessionManagerImpl implements SessionManager {
             log.warn("清理 spill 目录失败: {}", e.getMessage());
         }
 
+        // 清理 Agent 产生的临时文件（temp_*）
+        SessionContext ctx = sessions.get(sessionId);
+        if (ctx != null) {
+            try {
+                Path workDir = ctx.getWorkingDirectory();
+                if (Files.isDirectory(workDir)) {
+                    try (var files = Files.list(workDir)) {
+                        files.filter(p -> p.getFileName().toString().startsWith("temp_"))
+                             .peek(p -> log.debug("清理临时文件: {}", p.getFileName()))
+                             .forEach(p -> p.toFile().delete());
+                    }
+                }
+            } catch (IOException e) {
+                log.debug("清理临时文件失败: {}", e.getMessage());
+            }
+        }
+
         // 先保存会话
         saveSession(sessionId);
         sessions.remove(sessionId);

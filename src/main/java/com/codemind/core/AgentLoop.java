@@ -161,9 +161,10 @@ public class AgentLoop {
                     consecutiveFailures++;
                     if (consecutiveFailures >= 3) {
                         String hint = "【系统提示】连续 " + consecutiveFailures
-                            + " 轮工具调用全部失败。请检查上一条失败原因，不要猜测路径或重复相同命令。"
-                            + "命令报错'找不到路径'说明路径不存在，检查工作目录后使用正确路径。"
-                            + "命令被安全策略拒绝则换用其他方式。";
+                            + " 轮工具调用全部失败。请检查最后一条失败原因："
+                            + "若提示缺少必需参数，务必检查工具定义并在调用时补全所有 required 字段；"
+                            + "若命令报错'找不到路径'说明路径不存在，检查工作目录后用正确路径重试；"
+                            + "若被安全策略拒绝则换其他方式。";
                         context.addMessage(Message.user(hint));
                         consecutiveFailures = 0;
                     }

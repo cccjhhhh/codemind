@@ -12,9 +12,18 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
+/**
+ * 截断钩子 — 大结果落盘（spill），避免 LLM 上下文被撑爆。
+ * postExecute 检查工具输出是否超过 spillThreshold（默认 2000 字符），
+ * 超过则将完整内容写入 spill 文件，输出替换为头 800 + 尾 400 字符的摘要。
+ * 属于第三层防线，接在 MetricsHook 之后。
+ */
 public class TruncationHook implements ToolHook {
-
     private static final Logger log = LoggerFactory.getLogger(TruncationHook.class);
+    // 摘要常量：保留头 800 字符 + 尾 400 字符，让 LLM 能看到文件两端
+    private static final int SUMMARY_HEAD = 800;
+    private static final int SUMMARY_TAIL = 400;
+
     private static final int DEFAULT_SPILL_THRESHOLD = 2000;
     private static final String DEFAULT_SPILL_DIR = ".codemind/spill";
 
@@ -58,8 +67,17 @@ public class TruncationHook implements ToolHook {
 
             Files.writeString(spillFile, output);
 
-            String summary = output.substring(0, Math.min(200, output.length()));
-            result.setOutput("[结果已保存](" + spillFile + ")（前 " + summary.length() + " 字符摘要）:\n" + summary);
+            // 构造双端摘要：头 SUMMARY_HEAD + 尾 SUMMARY_TAIL
+            int len = output.length();
+            StringBuilder summary = new StringBuilder();
+            String header = "[结果已保存](" + spillFile + ")（共 " + len + " 字符）:\n";
+            summary.append(header);
+            summary.append(output, 0, Math.min(SUMMARY_HEAD, len));
+            if (len > SUMMARY_HEAD + SUMMARY_TAIL) {
+                summary.append("\n...\n");
+                summary.append(output, len - SUMMARY_TAIL, len);
+            }
+            result.setOutput(summary.toString());
         } catch (IOException e) {
             log.warn("结果落盘失败: {}", e.getMessage());
         }
