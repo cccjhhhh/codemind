@@ -79,6 +79,10 @@ public class CLI implements Runnable {
     // Scanner for user input (reused to avoid resource leak)
     private Scanner scanner;
 
+    // Effective agent parameters from bootstrapper (settings + CLI flags merged)
+    private int effectiveMaxIterations = DEFAULT_MAX_ITERATIONS;
+    private int effectiveTimeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+
     // Thread-safe reference to current session context (allows /load to swap it)
     private AtomicReference<SessionContext> contextRef;
     
@@ -119,6 +123,8 @@ public class CLI implements Runnable {
         this.sessionManager = bootResult.sessionManager();
 
         AgentLoop agentLoop = bootResult.agentLoop();
+        this.effectiveMaxIterations = bootResult.effectiveMaxIterations();
+        this.effectiveTimeoutSeconds = bootResult.effectiveTimeoutSeconds();
         this.contextRef = new AtomicReference<>(bootResult.session());
         var skillRouter = bootResult.skillRouter();
         var promptBuilder = bootResult.promptBuilder();
@@ -160,7 +166,7 @@ public class CLI implements Runnable {
                         // 模型已切换，重新创建客户端
                         try {
                             LLMClient newClient = ModelFactory.create(newModel);
-                            agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, maxIterations, timeoutSeconds, skillRouter, promptBuilder);
+                            agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, effectiveMaxIterations, effectiveTimeoutSeconds, skillRouter, promptBuilder);
                             System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                             System.out.println();
                         } catch (Exception e) {

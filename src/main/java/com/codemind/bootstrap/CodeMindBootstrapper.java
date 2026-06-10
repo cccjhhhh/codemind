@@ -54,7 +54,9 @@ public class CodeMindBootstrapper {
 
         // 3. 配置加载（模型配置 + 技能目录 + 权限规则 + 上下文配置）
         SettingsLoader.ensureGlobalConfig();
-        var settings = SettingsLoader.loadChain(projectDir);
+        var settings = (configPath != null)
+            ? SettingsLoader.loadChain(projectDir, configPath)
+            : SettingsLoader.loadChain(projectDir);
 
         // 从 settings.json 加载权限规则
         if (!settings.getPermissions().getRules().isEmpty()) {
@@ -134,7 +136,8 @@ public class CodeMindBootstrapper {
         session.setSystemMessage(promptBuilder.build(session));
 
         return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry,
-            permissionGate, skillRouter, promptBuilder, modelManager, settings);
+            permissionGate, skillRouter, promptBuilder, modelManager, settings,
+            effectiveMaxIterations, effectiveTimeout);
     }
 
     public record BootstrapResult(
@@ -146,6 +149,8 @@ public class CodeMindBootstrapper {
         SkillRouter skillRouter,
         SystemPromptBuilder promptBuilder,
         ModelManager modelManager,
-        Settings settings
+        Settings settings,
+        int effectiveMaxIterations,
+        int effectiveTimeoutSeconds
     ) {}
 }
