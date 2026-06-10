@@ -23,6 +23,7 @@ import picocli.CommandLine.Option;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Scanner;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.codemind.impl.cli.AnsiStyles.*;
 
@@ -77,6 +78,9 @@ public class CLI implements Runnable {
     
     // Scanner for user input (reused to avoid resource leak)
     private Scanner scanner;
+
+    // Thread-safe reference to current session context (allows /load to swap it)
+    private AtomicReference<SessionContext> contextRef;
     
     @Option(names = {"-c", "--config"}, description = "配置文件路径")
     private String configPath;
@@ -114,7 +118,7 @@ public class CLI implements Runnable {
         this.sessionManager = bootResult.sessionManager();
 
         AgentLoop agentLoop = bootResult.agentLoop();
-        SessionContext context = bootResult.session();
+        this.contextRef = new AtomicReference<>(bootResult.session());
         var skillRouter = bootResult.skillRouter();
         var promptBuilder = bootResult.promptBuilder();
         ModelManager modelManager = bootResult.modelManager();
@@ -163,14 +167,14 @@ public class CLI implements Runnable {
                 
                 if ("quit".equalsIgnoreCase(input) || "exit".equalsIgnoreCase(input)) {
                     // 保存当前会话
-                    sessionManager.closeSession(context.getSessionId());
+                    sessionManager.closeSession(contextRef.get().getSessionId());
                     System.out.println(YELLOW + "会话已保存，再见！" + RESET);
                     break;
                 }
                 
                 // 调用 Agent（流式输出）
                 System.out.println();
-                AgentResult result = agentLoop.runStream(input, context, token -> {
+                AgentResult result = agentLoop.runStream(input, contextRef.get(), token -> {
                     // 流式输出：实时打印 token
                     System.out.print(token);
                     System.out.flush();
@@ -582,6 +586,12 @@ public class CLI implements Runnable {
         // 更新当前上下文
         // 注意：这会替换当前的 context
         System.out.println(GREEN + "✓ 已加载会话: " + sessionId + RESET);
+        System.out.println();
+
+        // Save current session before replacing
+        sessionManager.closeSession(contextRef.get().getSessionId());
+        this.contextRef.set(loadedContext);
+        System.out.println(DIM + "已替换当前会话上下文" + RESET);
         System.out.println();
     }
 }
