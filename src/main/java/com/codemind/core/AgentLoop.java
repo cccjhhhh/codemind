@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -152,6 +154,12 @@ public class AgentLoop {
 
             AgentTurnResult turnResult = runSingleTurn(history, tools, outputHandler);
 
+            if (!turnResult.hasToolCalls() && turnResult.fullText.isEmpty()) {
+                log.warn("LLM 返回空结果，插入重试提示");
+                context.addMessage(Message.user("【系统提示】上一轮 LLM 调用失败，请重新尝试。"));
+                continue;
+            }
+
             addToHistory(context, turnResult);
 
             if (turnResult.hasToolCalls()) {
@@ -236,11 +244,13 @@ public class AgentLoop {
         AtomicReference<List<ToolCall>> toolCalls = new AtomicReference<>(new ArrayList<>());
         AtomicReference<Exception> error = new AtomicReference<>(null);
         AtomicReference<Boolean> firstDelta = new AtomicReference<>(true);
+        AtomicBoolean cancelled = new AtomicBoolean(false);
 
         llmClient.chatStreamWithTools(history, tools, new LLMClient.StreamHandler() {
 
             @Override
             public void onEvent(StreamEvent event) {
+                if (cancelled.get()) return;
                 switch (event.getType()) {
                     case TEXT_DELTA:
                         if (firstDelta.compareAndSet(true, false)) {
@@ -264,24 +274,31 @@ public class AgentLoop {
 
             @Override
             public void onError(Exception e) {
+                if (cancelled.get()) return;
                 error.set(e);
                 latch.countDown();
             }
         });
 
         try {
-            latch.await();
+            if (!latch.await(30, TimeUnit.SECONDS)) {
+                cancelled.set(true);
+                log.error("LLM 流式响应超时（30s）");
+                return new AgentTurnResult("", new ArrayList<>());
+            }
         } catch (InterruptedException e) {
+            cancelled.set(true);
             Thread.currentThread().interrupt();
-            throw new RuntimeException("流式输出被中断", e);
+            return new AgentTurnResult("", new ArrayList<>());
         }
 
         if (error.get() != null) {
+            cancelled.set(true);
             log.error("LLM 调用失败: {} - {}", error.get().getClass().getName(), error.get().getMessage());
             if (error.get().getCause() != null) {
                 log.error("LLM 调用失败原因: {}", error.get().getCause().getMessage());
             }
-            throw new RuntimeException("LLM 调用失败", error.get());
+            return new AgentTurnResult("", new ArrayList<>());
         }
 
         return new AgentTurnResult(fullText.get(), toolCalls.get());
