@@ -7,12 +7,18 @@ import com.codemind.api.safety.PermissionPrompter;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class PermissionGateImpl implements PermissionGate {
+    private static final Logger log = LoggerFactory.getLogger(PermissionGateImpl.class);
 
     private final PermissionPrompter permissionPrompter;
     private final Map<String, PermissionLevel> runtimeLevels = new ConcurrentHashMap<>();
     private List<PermissionRule> rules = List.of();
+    private List<Pattern> denyPatterns = List.of();
 
     private static final Map<String, PermissionLevel> DEFAULT_LEVELS = Map.ofEntries(
         Map.entry("Read", PermissionLevel.ALLOW),
@@ -31,7 +37,7 @@ public class PermissionGateImpl implements PermissionGate {
         this.permissionPrompter = permissionPrompter;
     }
 
-    public record PermissionRule(String tool, String condition, PermissionLevel level) {
+    public record PermissionRule(String tool, @Deprecated String condition, PermissionLevel level) {
         public boolean matches(String toolName) {
             return "*".equals(tool) || tool.equals(toolName);
         }
@@ -39,6 +45,12 @@ public class PermissionGateImpl implements PermissionGate {
 
     public void setRules(List<PermissionRule> rules) {
         this.rules = rules != null ? rules : List.of();
+    }
+
+    public void setDenyPatterns(List<String> denyRules) {
+        this.denyPatterns = denyRules != null
+            ? denyRules.stream().map(Pattern::compile).toList()
+            : List.of();
     }
 
     @Override
@@ -63,6 +75,14 @@ public class PermissionGateImpl implements PermissionGate {
 
     @Override
     public boolean requestPermission(String toolName, String context) {
+        // Check deny patterns first
+        for (Pattern p : denyPatterns) {
+            if (p.matcher(context).find()) {
+                log.warn("命令被 deny 规则阻止: [{}] 匹配模式 [{}]", context, p.pattern());
+                return false;
+            }
+        }
+
         if (permissionPrompter == null) return false;
         PermissionPrompter.Decision decision = permissionPrompter.prompt(toolName, context);
         if (decision == PermissionPrompter.Decision.ALLOW_SESSION) {

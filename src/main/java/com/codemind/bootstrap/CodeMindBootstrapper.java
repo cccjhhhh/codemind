@@ -65,6 +65,9 @@ public class CodeMindBootstrapper {
                 .toList();
             permissionGate.setRules(rules);
         }
+        if (!settings.getPermissions().getDeny().isEmpty()) {
+            permissionGate.setDenyPatterns(settings.getPermissions().getDeny());
+        }
 
         // 注册 Hook 链（顺序决定执行顺序）
         toolRegistry.registerHook(new SafetyPreHook());
