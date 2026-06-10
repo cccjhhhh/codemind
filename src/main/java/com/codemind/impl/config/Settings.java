@@ -59,11 +59,14 @@ public class Settings {
     public static class ContextConfig {
         private Truncation truncation = new Truncation();
         private Window window = new Window();
+        private CompactionConfig compaction = new CompactionConfig();
 
         public Truncation getTruncation() { return truncation; }
         public void setTruncation(Truncation truncation) { this.truncation = truncation; }
         public Window getWindow() { return window; }
         public void setWindow(Window window) { this.window = window; }
+        public CompactionConfig getCompaction() { return compaction; }
+        public void setCompaction(CompactionConfig compaction) { this.compaction = compaction; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -86,6 +89,29 @@ public class Settings {
         public void setTargetRatio(double targetRatio) { this.targetRatio = targetRatio; }
         public int getStaleRounds() { return staleRounds; }
         public void setStaleRounds(int staleRounds) { this.staleRounds = staleRounds; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class CompactionConfig {
+        private int maxMessagesBeforeSnip = 50;
+        private int keepRecentToolResults = 3;
+        private int budgetMaxBytes = 200000;
+        private double compactOnRatio = 0.9;
+        private int maxConsecutiveFailures = 3;
+        private boolean saveTranscripts = true;
+
+        public int getMaxMessagesBeforeSnip() { return maxMessagesBeforeSnip; }
+        public void setMaxMessagesBeforeSnip(int v) { this.maxMessagesBeforeSnip = v; }
+        public int getKeepRecentToolResults() { return keepRecentToolResults; }
+        public void setKeepRecentToolResults(int v) { this.keepRecentToolResults = v; }
+        public int getBudgetMaxBytes() { return budgetMaxBytes; }
+        public void setBudgetMaxBytes(int v) { this.budgetMaxBytes = v; }
+        public double getCompactOnRatio() { return compactOnRatio; }
+        public void setCompactOnRatio(double v) { this.compactOnRatio = v; }
+        public int getMaxConsecutiveFailures() { return maxConsecutiveFailures; }
+        public void setMaxConsecutiveFailures(int v) { this.maxConsecutiveFailures = v; }
+        public boolean isSaveTranscripts() { return saveTranscripts; }
+        public void setSaveTranscripts(boolean v) { this.saveTranscripts = v; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

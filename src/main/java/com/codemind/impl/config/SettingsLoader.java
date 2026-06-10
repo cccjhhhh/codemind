@@ -117,6 +117,20 @@ public class SettingsLoader {
                 if (source.getContext().getWindow().getStaleRounds() != 5)
                     target.getContext().getWindow().setStaleRounds(source.getContext().getWindow().getStaleRounds());
             }
+            if (source.getContext().getCompaction() != null) {
+                if (source.getContext().getCompaction().getMaxMessagesBeforeSnip() != 50)
+                    target.getContext().getCompaction().setMaxMessagesBeforeSnip(source.getContext().getCompaction().getMaxMessagesBeforeSnip());
+                if (source.getContext().getCompaction().getKeepRecentToolResults() != 3)
+                    target.getContext().getCompaction().setKeepRecentToolResults(source.getContext().getCompaction().getKeepRecentToolResults());
+                if (source.getContext().getCompaction().getBudgetMaxBytes() != 200000)
+                    target.getContext().getCompaction().setBudgetMaxBytes(source.getContext().getCompaction().getBudgetMaxBytes());
+                if (source.getContext().getCompaction().getCompactOnRatio() != 0.9)
+                    target.getContext().getCompaction().setCompactOnRatio(source.getContext().getCompaction().getCompactOnRatio());
+                if (source.getContext().getCompaction().getMaxConsecutiveFailures() != 3)
+                    target.getContext().getCompaction().setMaxConsecutiveFailures(source.getContext().getCompaction().getMaxConsecutiveFailures());
+                if (source.getContext().getCompaction().isSaveTranscripts() != true)
+                    target.getContext().getCompaction().setSaveTranscripts(source.getContext().getCompaction().isSaveTranscripts());
+            }
         }
         if (source.getAgent() != null) {
             if (source.getAgent().getMaxIterations() != 50)
