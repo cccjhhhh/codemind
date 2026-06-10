@@ -118,6 +118,12 @@ public class SettingsLoader {
                     target.getContext().getWindow().setStaleRounds(source.getContext().getWindow().getStaleRounds());
             }
         }
+        if (source.getAgent() != null) {
+            if (source.getAgent().getMaxIterations() != 50)
+                target.getAgent().setMaxIterations(source.getAgent().getMaxIterations());
+            if (source.getAgent().getTimeoutSeconds() != 300)
+                target.getAgent().setTimeoutSeconds(source.getAgent().getTimeoutSeconds());
+        }
         // 模型配置整体替换（不逐 key 合并，避免残留旧模型）
         if (source.getModels() != null && !source.getModels().isEmpty())
             target.setModels(source.getModels());
