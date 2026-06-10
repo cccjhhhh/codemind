@@ -102,11 +102,17 @@ public class DefaultOutputFormatter implements OutputFormatter {
                   .append(outputPreview);
             }
 
-            // Verbose: append first 200 chars of output
-            if (verbose && result.getOutput() != null && result.getOutput().length() > 200) {
-                sb.append("\n")
-                  .append(AnsiStyles.DIM).append(result.getOutput().substring(0, 200)).append("...")
-                  .append(AnsiStyles.RESET);
+            // Verbose: append output preview
+            if (verbose) {
+                String output = result.getOutput();
+                if (output != null && !output.isEmpty()) {
+                    String preview = output.length() > 200
+                        ? output.substring(0, 200) + "..."
+                        : output;
+                    sb.append("\n")
+                      .append(AnsiStyles.DIM).append(preview)
+                      .append(AnsiStyles.RESET);
+                }
             }
         } else {
             sb.append(AnsiStyles.DIM).append("   ↳ ").append(AnsiStyles.RESET)

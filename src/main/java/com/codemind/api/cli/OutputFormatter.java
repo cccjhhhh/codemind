@@ -139,6 +139,13 @@ public interface OutputFormatter {
         return content;
     }
 
+    /**
+     * 设置详细输出模式（可选）
+     *
+     * @param verbose 是否启用详细输出
+     */
+    default void setVerbose(boolean verbose) {}
+
     // ========== Skill 格式化方法（新增）==========
 
     /**

@@ -132,8 +132,7 @@ public class CLI implements Runnable {
 
         // Wire --verbose flag
         if (verbose) {
-            System.setProperty("codemind.verbose", "true");
-            ((DefaultOutputFormatter) outputFormatter).setVerbose(true);
+            outputFormatter.setVerbose(true);
         }
 
         // Display current model
