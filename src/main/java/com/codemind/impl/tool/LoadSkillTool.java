@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.codemind.impl.skill.SkillEntry;
@@ -28,9 +27,6 @@ public class LoadSkillTool implements Tool {
     public String getDescription() {
         return "加载指定技能的完整指令。技能名称通过 Available Skills 列表获取。";
     }
-
-    @Override
-    public PermissionLevel getDefaultPermission() { return PermissionLevel.ALLOW; }
 
     @Override
     public JsonNode getInputSchema() {

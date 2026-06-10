@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,11 +41,6 @@ public class GrepTool implements Tool {
     @Override
     public String getDescription() {
         return "在代码库中搜索匹配的代码片段，支持正则表达式";
-    }
-    
-    @Override
-    public PermissionLevel getDefaultPermission() {
-        return PermissionLevel.ALLOW;  // 只读搜索，自动允许
     }
     
     /**

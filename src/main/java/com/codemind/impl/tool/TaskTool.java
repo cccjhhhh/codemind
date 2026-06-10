@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
@@ -39,9 +38,6 @@ public class TaskTool implements Tool {
         return "将复杂任务委派给子 Agent 执行。子 Agent 有独立的上下文窗口，只有最终结果会返回。"
              + "适用于：搜索整个项目、并行文件分析、多步调试等。";
     }
-
-    @Override
-    public PermissionLevel getDefaultPermission() { return PermissionLevel.ALLOW; }
 
     @Override
     public JsonNode getInputSchema() {

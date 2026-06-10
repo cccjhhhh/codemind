@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,11 +26,6 @@ public class WriteTool implements Tool {
     @Override
     public String getDescription() {
         return "将内容写入指定文件，支持覆盖和追加模式";
-    }
-    
-    @Override
-    public PermissionLevel getDefaultPermission() {
-        return PermissionLevel.ASK;  // 写入操作，需要用户确认
     }
     
     /**

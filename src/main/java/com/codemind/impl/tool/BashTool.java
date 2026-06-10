@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -31,9 +30,6 @@ public class BashTool implements Tool {
                "注意：命令会在工作目录下执行。\n" +
                "Windows 系统使用 'cmd /c'，Unix 系统使用 'sh -c'。";
     }
-
-    @Override
-    public PermissionLevel getDefaultPermission() { return PermissionLevel.ASK; }
 
     @Override
     public java.util.Optional<String> getDeprecatedName() {

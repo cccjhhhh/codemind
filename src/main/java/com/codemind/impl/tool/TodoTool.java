@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,9 +23,6 @@ public class TodoTool implements Tool {
     public String getDescription() {
         return "管理任务规划列表。支持 init（创建计划）、update（更新状态）、list（查看进度）三种操作。";
     }
-
-    @Override
-    public PermissionLevel getDefaultPermission() { return PermissionLevel.ALLOW; }
 
     @Override
     public JsonNode getInputSchema() {

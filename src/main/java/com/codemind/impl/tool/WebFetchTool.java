@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -46,11 +45,6 @@ public class WebFetchTool implements Tool {
     @Override
     public String getDescription() {
         return "获取网页内容，返回 HTML 或 Markdown 格式";
-    }
-    
-    @Override
-    public PermissionLevel getDefaultPermission() {
-        return PermissionLevel.ALLOW;  // 只读操作，自动允许
     }
     
     @Override

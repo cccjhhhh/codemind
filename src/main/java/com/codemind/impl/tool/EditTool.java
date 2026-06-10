@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -39,11 +38,6 @@ public class EditTool implements Tool {
     @Override
     public String getDescription() {
         return "对文件进行增量修改。必须提供精确的 oldString 进行替换。";
-    }
-    
-    @Override
-    public PermissionLevel getDefaultPermission() {
-        return PermissionLevel.ASK;  // 修改文件，需要确认
     }
     
     @Override

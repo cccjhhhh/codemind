@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -53,11 +52,6 @@ public class GlobTool implements Tool {
     @Override
     public String getDescription() {
         return "列举匹配模式的文件，自动排除 .git、target 等目录。支持 glob 模式（**/*.java）。";
-    }
-    
-    @Override
-    public PermissionLevel getDefaultPermission() {
-        return PermissionLevel.ALLOW;  // 只读操作，自动允许
     }
     
     /**

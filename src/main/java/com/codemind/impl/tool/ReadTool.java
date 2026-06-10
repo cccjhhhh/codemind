@@ -1,6 +1,5 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -27,11 +26,6 @@ public class ReadTool implements Tool {
     @Override
     public String getDescription() {
         return "读取指定路径的文件内容，支持行号范围限制";
-    }
-    
-    @Override
-    public PermissionLevel getDefaultPermission() {
-        return PermissionLevel.ALLOW;  // 只读操作，自动允许
     }
     
     /**

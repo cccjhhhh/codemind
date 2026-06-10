@@ -1,6 +1,5 @@
 package com.codemind.api.tool;
 
-import com.codemind.api.safety.PermissionLevel;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
@@ -54,13 +53,4 @@ public interface Tool {
         return Optional.empty();
     }
     
-    /**
-     * 获取工具的默认权限级别
-     * 
-     * 此级别用于权限检查的默认决策。
-     * 可以通过 PermissionGate 运行时覆盖。
-     * 
-     * @return 默认权限级别
-     */
-    PermissionLevel getDefaultPermission();
 }
