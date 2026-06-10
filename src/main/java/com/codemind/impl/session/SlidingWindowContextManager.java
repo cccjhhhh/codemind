@@ -38,34 +38,20 @@ public class SlidingWindowContextManager implements ContextWindowManager {
     @Override
     public List<Message> manageWindow(List<Message> messages, Message systemMessage) {
         List<Message> result = new ArrayList<>();
-
-        // 1. 始终保留系统消息
+        // 保留系统消息在头部
         if (systemMessage != null) {
             result.add(systemMessage);
         }
-
-        // 2. 添加非系统消息
+        // 移除其他 SYSTEM 角色消息（旧 L1/L2 逻辑已由 CompactionPipeline 处理）
         for (Message msg : messages) {
             if (msg.getRole() == Message.Role.SYSTEM) continue;
             result.add(msg);
         }
-
-        if (result.size() <= (systemMessage != null ? 2 : 1)) {
-            return result;
-        }
-
-        // 3. 第二层：token 超阈值时裁剪最早对话
-        int totalTokens = getCurrentTokenCount(result);
-        int limit = (int) (tokenCountService.getAvailableContextTokens(reservedResponseTokens) * targetRatio);
-
-        if (totalTokens > limit) {
-            result = trimMessages(result, systemMessage != null);
-        }
-
-        // 4. 第三层：旧 tool 结果占位
-        result = replaceStaleToolResults(result, systemMessage != null);
-
         return result;
+    }
+
+    public TokenCountService getTokenCountService() {
+        return tokenCountService;
     }
 
     @Override

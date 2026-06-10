@@ -9,30 +9,22 @@ import com.codemind.api.tool.ToolResult;
 import com.codemind.dto.skill.SkillRouteDto;
 import com.codemind.impl.cli.SystemPromptBuilder;
 import com.codemind.impl.safety.SafetyChecker;
+import com.codemind.impl.session.CompactionPipeline;
 import com.codemind.impl.skill.routing.SkillRouter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
-/**
- * Agent 循环引擎
- *
- * 实现 Agent 的核心"思考-行动-观察"循环（ReAct 模式）。
- * 采用事件驱动的流式输出架构。
- *
- * 循环流程：
- * 1. 思考 (Think)：将用户输入和上下文发送给 LLM（流式）
- * 2. 行动 (Act)：如果 LLM 请求工具调用，则执行工具（支持权限确认）
- * 3. 观察 (Observe)：将工具执行结果反馈给 LLM
- * 4. 重复直到 LLM 返回最终回答
- */
 public class AgentLoop {
 
     private static final Logger log = LoggerFactory.getLogger(AgentLoop.class);
@@ -45,11 +37,29 @@ public class AgentLoop {
     private final long maxExecutionTimeMs;
     private final SkillRouter skillRouter;
     private final SystemPromptBuilder promptBuilder;
+    private final CompactionPipeline compactionPipeline;
+    private final TokenBudget tokenBudget;
+    private final StopHook stopHook;
 
+    private int iterationCount = 0;
+    private boolean hasAttemptedReactiveCompact = false;
+
+    // 旧 8-参数构造器（保持向后兼容）
     public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
-                      PermissionGate permissionGate, OutputFormatter outputFormatter,
-                      int maxIterations, int maxExecutionTimeSeconds,
-                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder) {
+                     PermissionGate permissionGate, OutputFormatter outputFormatter,
+                     int maxIterations, int maxExecutionTimeSeconds,
+                     SkillRouter skillRouter, SystemPromptBuilder promptBuilder) {
+        this(llmClient, toolRegistry, permissionGate, outputFormatter,
+             maxIterations, maxExecutionTimeSeconds, skillRouter, promptBuilder,
+             null, null);
+    }
+
+    // 新 10-参数构造器（推荐）
+    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
+                     PermissionGate permissionGate, OutputFormatter outputFormatter,
+                     int maxIterations, int maxExecutionTimeSeconds,
+                     SkillRouter skillRouter, SystemPromptBuilder promptBuilder,
+                     CompactionPipeline compactionPipeline, TokenBudget tokenBudget) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.permissionGate = permissionGate;
@@ -58,28 +68,29 @@ public class AgentLoop {
         this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
         this.skillRouter = skillRouter;
         this.promptBuilder = promptBuilder;
+        this.compactionPipeline = compactionPipeline;
+        this.tokenBudget = tokenBudget;
+        this.stopHook = new StopHook();
     }
 
-    // ==================== 公共入口方法 ====================
+    // ==================== 公共入口 ====================
 
     public AgentResult runStream(String input, SessionContext context,
-                                Consumer<String> outputHandler) {
+                                 Consumer<String> outputHandler) {
         try {
             long startTime = System.currentTimeMillis();
+            iterationCount = 0;
+
             SafetyChecker safetyChecker = new SafetyChecker();
 
             AgentResult safetyResult = validateInput(input, safetyChecker);
-            if (safetyResult != null) {
-                return safetyResult;
-            }
+            if (safetyResult != null) return safetyResult;
 
-            if (context.hasActiveSkill()) {
-                context.clearActiveSkill();
-            }
+            if (context.hasActiveSkill()) context.clearActiveSkill();
             tryActivateSkill(input, context);
 
             context.addMessage(Message.user(input));
-            return executeAgentLoop(context, outputHandler, safetyChecker, startTime);
+            return executeLoop(context, outputHandler, safetyChecker, startTime);
 
         } catch (Exception e) {
             log.error("Agent 执行异常", e);
@@ -98,141 +109,269 @@ public class AgentLoop {
             log.warn("输入包含不安全内容，已拒绝");
             return AgentResult.failure("输入包含不安全内容，请检查您的输入");
         }
-
         if (safetyChecker.detectPromptInjection(input)) {
             log.warn("检测到 Prompt 注入尝试，已拒绝");
             return AgentResult.failure("检测到 Prompt 注入尝试，请使用正常方式交流");
         }
-
         return null;
     }
 
-    // ==================== Skill 路由 ====================
-
     private boolean tryActivateSkill(String input, SessionContext context) {
         if (skillRouter == null) return false;
-
         SkillRouteDto route = skillRouter.route(input);
         if (route == null || !route.shouldExecute()) return false;
-
         context.setActiveSkill(route.skill());
-        log.debug("Skill activated: {} (reason: {}, confidence: {})",
-            route.skill().getName(), route.reason(), route.confidence());
         return true;
     }
 
-    // ==================== 主循环 ====================
+    // ==================== 主循环（状态机） ====================
 
-    private AgentResult executeAgentLoop(SessionContext context,
-                                        Consumer<String> outputHandler,
-                                        SafetyChecker safetyChecker,
-                                        long startTime) {
-        int consecutiveFailures = 0;
+    private AgentResult executeLoop(SessionContext context,
+                                    Consumer<String> outputHandler,
+                                    SafetyChecker safetyChecker,
+                                    long startTime) {
+        ContinueReason reason = ContinueReason.NEXT_TURN;
 
-        for (int iteration = 0; iteration < maxIterations; iteration++) {
+        while (true) {
+            // 超时检查
             if (isTimeout(startTime)) {
                 outputHandler.accept(outputFormatter.formatWarning(
                     "执行超时（" + (maxExecutionTimeMs / 1000) + "秒），已终止"));
                 return AgentResult.failure("执行超时");
             }
 
-            if (iteration > 0) {
-                long elapsed = System.currentTimeMillis() - startTime;
-                outputHandler.accept(outputFormatter.formatProgress(iteration, maxIterations, elapsed));
+            // 迭代计数熔断（recovery 不计入）
+            if (iterationCount >= maxIterations) {
+                return AgentResult.failure("达到最大迭代次数 " + maxIterations);
             }
 
-            if (promptBuilder != null) {
-                String prompt = promptBuilder.build(context);
-                context.setSystemMessage(prompt);
-            }
-
-            List<Message> history = context.getManagedHistory();
-            // 关键：按 skill.allowedTools 过滤工具，避免 LLM 看到不被允许的工具（如 code_review 没声明 Write 就不会拿到）
-            List<ToolDefinition> tools = toolRegistry.getDefinitionsForSkill(context.getActiveSkill());
-
-            outputHandler.accept(outputFormatter.formatThinkingStart());
-
-            AgentTurnResult turnResult = runSingleTurn(history, tools, outputHandler);
-
-            if (!turnResult.hasToolCalls() && turnResult.fullText.isEmpty()) {
-                log.warn("LLM 返回空结果，插入重试提示");
-                context.addMessage(Message.user("【系统提示】上一轮 LLM 调用失败，请重新尝试。"));
-                continue;
-            }
-
-            addToHistory(context, turnResult);
-
-            if (turnResult.hasToolCalls()) {
-                boolean allFailed = executeToolCalls(turnResult.toolCalls, context, outputHandler);
-
-                if (allFailed) {
-                    consecutiveFailures++;
-                    if (consecutiveFailures >= 3) {
-                        String hint = "【系统提示】连续 " + consecutiveFailures
-                            + " 轮工具调用全部失败。请检查最后一条失败原因："
-                            + "若提示缺少必需参数，务必检查工具定义并在调用时补全所有 required 字段；"
-                            + "若命令报错'找不到路径'说明路径不存在，检查工作目录后用正确路径重试；"
-                            + "若被安全策略拒绝则换其他方式。";
-                        context.addMessage(Message.user(hint));
-                        consecutiveFailures = 0;
-                    }
-                } else {
-                    consecutiveFailures = 0;
+            switch (reason) {
+                case COMPLETE: {
+                    List<Message> history = context.getHistory();
+                    String lastMsg = history.isEmpty() ? "" : history.get(history.size() - 1).getContent();
+                    return AgentResult.success(safetyChecker.sanitizeOutput(lastMsg != null ? lastMsg : ""));
                 }
-            } else {
-                return AgentResult.success(safetyChecker.sanitizeOutput(turnResult.fullText));
+
+                case ERROR:
+                case MAX_ITERATIONS:
+                case USER_INTERRUPT:
+                    return AgentResult.failure("执行终止: " + reason);
+
+                case RECOVERY_COMPACT: {
+                    // LLM 全量摘要（L4）
+                    try {
+                        String summary = compactHistory(context, startTime);
+                        if (summary != null && !summary.isEmpty()) {
+                            context.clearHistory();
+                            context.addMessage(Message.user("[Compacted]\n\n" + summary));
+                            log.info("RECOVERY_COMPACT: 全量摘要完成");
+                            hasAttemptedReactiveCompact = false;
+                        }
+                    } catch (Exception e) {
+                        log.error("RECOVERY_COMPACT 失败: {}", e.getMessage());
+                        if (compactionPipeline != null && compactionPipeline.getConsecutiveFailures() >= 3) {
+                            return AgentResult.failure("上下文压缩失败，无法继续");
+                        }
+                    }
+                    reason = ContinueReason.NEXT_TURN;
+                    continue;
+                }
+
+                case RECOVERY_ESCALATE:
+                    // 升级 max_output_tokens（暂不实现）
+                    reason = ContinueReason.NEXT_TURN;
+                    continue;
+
+                case RECOVERY_FAILOVER:
+                    // 切 fallback 模型（暂不实现）
+                    reason = ContinueReason.NEXT_TURN;
+                    continue;
+
+                case TOKEN_BUDGET_CONTINUE:
+                    // max_tokens 截断后 nudge（暂不实现，fall-through 重新发起）
+                    // fall-through
+
+                case NEXT_TURN:
+                    ContinueReason newReason = queryLoop(context, outputHandler, startTime);
+                    if (newReason == ContinueReason.NEXT_TURN) {
+                        iterationCount++;
+                    }
+                    reason = newReason;
+                    continue;
+            }
+        }
+    }
+
+    private ContinueReason queryLoop(SessionContext context,
+                                     Consumer<String> outputHandler,
+                                     long startTime) {
+        // 1. 构建 system prompt
+        if (promptBuilder != null) {
+            String prompt = promptBuilder.build(context);
+            context.setSystemMessage(prompt);
+        }
+
+        // 2. 获取历史并执行压缩管线
+        List<Message> messages = context.getManagedHistory();
+
+        // 2a. 管线预压缩（L3→L1→L2）
+        if (compactionPipeline != null) {
+            messages = compactionPipeline.run(messages, null);
+        }
+
+        // 2b. 检查 token 预算，触发 L4 摘要
+        if (tokenBudget != null && tokenBudget.needsCompact(messages)) {
+            log.info("Token 预算紧张，触发 L4 摘要");
+            try {
+                context.clearHistory();
+                for (Message msg : messages) context.addMessage(msg);
+                String summary = compactHistory(context, startTime);
+                if (summary != null && !summary.isEmpty()) {
+                    context.clearHistory();
+                    context.addMessage(Message.user("[Compacted]\n\n" + summary));
+                    messages = context.getManagedHistory();
+                    if (compactionPipeline != null) compactionPipeline.resetFailures();
+                }
+            } catch (Exception e) {
+                log.warn("L4 摘要失败: {}", e.getMessage());
             }
         }
 
-        return AgentResult.failure("达到最大迭代次数 " + maxIterations);
-    }
+        // 3. 获取工具列表
+        List<ToolDefinition> tools = toolRegistry.getDefinitionsForSkill(context.getActiveSkill());
 
-    private boolean isTimeout(long startTime) {
-        return maxExecutionTimeMs > 0
-            && (System.currentTimeMillis() - startTime) >= maxExecutionTimeMs;
-    }
+        // 4. 输出 thinking 提示
+        outputHandler.accept(outputFormatter.formatThinkingStart());
 
-    private void addToHistory(SessionContext context, AgentTurnResult turnResult) {
-        if (turnResult.hasToolCalls()) {
-            context.addMessage(Message.assistantWithTools(turnResult.fullText, turnResult.toolCalls));
-        } else {
-            context.addMessage(Message.assistant(turnResult.fullText));
+        // 5. 调 LLM API
+        AgentTurnResult turnResult = runSingleTurn(messages, tools, outputHandler);
+
+        // 6. 检查是否 ContextLengthException → RECOVERY_COMPACT
+        // (错误已经在 runSingleTurn 中被捕获并返回空结果，我们在空结果时检查是否有 compact 需求)
+
+        // 7. 空结果处理
+        if (!turnResult.hasToolCalls() && (turnResult.fullText == null || turnResult.fullText.isEmpty())) {
+            log.warn("LLM 返回空结果");
+            // 已尝试过 compact 但再次失败 → 错误
+            if (hasAttemptedReactiveCompact) {
+                log.error("RECOVERY_COMPACT 后 LLM 仍然返回空结果");
+                return ContinueReason.ERROR;
+            }
+            hasAttemptedReactiveCompact = true;
+            return ContinueReason.RECOVERY_COMPACT;
         }
+
+        // 8. 注入到 context
+        addToHistory(context, turnResult);
+
+        // 9. 无工具调用 → 评估是否完成
+        if (!turnResult.hasToolCalls()) {
+            LLMResponse response = new LLMResponse(
+                turnResult.fullText != null ? turnResult.fullText : "",
+                List.of(),
+                true,
+                0
+            );
+            ContinueReason evalResult = stopHook.evaluate(response, false);
+            return evalResult != null ? evalResult : ContinueReason.NEXT_TURN;
+        }
+
+        // 10. 执行工具（使用 ToolPartitioner 分区）
+        List<List<ToolCall>> batches = ToolPartitioner.partition(turnResult.toolCalls);
+        boolean allFailed = true;
+
+        for (List<ToolCall> batch : batches) {
+            boolean batchFailed;
+            if (ToolPartitioner.isParallel(batch)) {
+                batchFailed = executeBatchParallel(batch, context, outputHandler);
+            } else {
+                batchFailed = executeBatchSerial(batch, context, outputHandler);
+            }
+            if (!batchFailed) allFailed = false;
+        }
+
+        // 11. 连续失败提示
+        if (allFailed) {
+            int failCount = context.getVariable("_consecutiveFailures") instanceof Integer
+                ? (int) context.getVariable("_consecutiveFailures") + 1 : 1;
+            context.setVariable("_consecutiveFailures", failCount);
+            if (failCount >= 3) {
+                String hint = "【系统提示】连续 3 轮工具调用全部失败。请检查失败原因后重试。";
+                context.addMessage(Message.user(hint));
+                context.setVariable("_consecutiveFailures", 0);
+            }
+        } else {
+            context.setVariable("_consecutiveFailures", 0);
+        }
+
+        // 12. 恢复 reactive compact 标记
+        hasAttemptedReactiveCompact = false;
+
+        // 13. 返回继续
+        return ContinueReason.NEXT_TURN;
     }
 
     // ==================== 工具执行 ====================
 
-    private boolean executeToolCalls(List<ToolCall> toolCalls,
-                                     SessionContext context,
-                                     Consumer<String> outputHandler) {
+    private boolean executeBatchSerial(List<ToolCall> batch, SessionContext context,
+                                       Consumer<String> outputHandler) {
         boolean allFailed = true;
-        for (ToolCall toolCall : toolCalls) {
-            ToolResult result = executeSingleTool(toolCall, outputHandler);
-            addToolResultToHistory(context, toolCall, result);
-            if (result.isSuccess()) {
-                allFailed = false;
+        for (ToolCall tc : batch) {
+            ToolResult result = executeSingleTool(tc, outputHandler);
+            addToolResultToHistory(context, tc, result);
+            if (result.isSuccess()) allFailed = false;
+        }
+        return allFailed;
+    }
+
+    private boolean executeBatchParallel(List<ToolCall> batch, SessionContext context,
+                                         Consumer<String> outputHandler) {
+        ExecutorService executor = Executors.newFixedThreadPool(
+            Math.min(batch.size(), 5));
+        List<Future<ToolResult>> futures = new ArrayList<>();
+
+        for (ToolCall tc : batch) {
+            futures.add(executor.submit(() -> {
+                outputHandler.accept(outputFormatter.formatToolCallStart(tc.getName(), tc.getArguments()));
+                ToolResult result = toolRegistry.execute(tc.getName(), tc.getArguments());
+                outputHandler.accept(outputFormatter.formatToolCallEnd(tc.getName(), result));
+                return result;
+            }));
+        }
+
+        executor.shutdown();
+        try {
+            executor.awaitTermination(60, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        boolean allFailed = true;
+        for (int i = 0; i < batch.size(); i++) {
+            try {
+                ToolResult result = futures.get(i).get(1, TimeUnit.SECONDS);
+                ToolCall tc = batch.get(i);
+                addToolResultToHistory(context, tc, result);
+                if (result.isSuccess()) allFailed = false;
+            } catch (Exception e) {
+                log.warn("并行工具执行失败: {}", e.getMessage());
+                addToolResultToHistory(context, batch.get(i), ToolResult.failure(e.getMessage()));
             }
         }
         return allFailed;
     }
 
-    private ToolResult executeSingleTool(ToolCall toolCall,
-                                        Consumer<String> outputHandler) {
+    private ToolResult executeSingleTool(ToolCall toolCall, Consumer<String> outputHandler) {
         outputHandler.accept(outputFormatter.formatToolCallStart(
             toolCall.getName(), toolCall.getArguments()));
-
         ToolResult result = toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
-
         outputHandler.accept(outputFormatter.formatToolCallEnd(toolCall.getName(), result));
-
         return result;
     }
 
-    private void addToolResultToHistory(SessionContext context, ToolCall toolCall, ToolResult result) {
-        String resultContent = result.isSuccess()
-            ? result.getOutput()
-            : "Error: " + result.getError();
-        context.addMessage(Message.tool(resultContent, toolCall.getId()));
+    private void addToolResultToHistory(SessionContext context, ToolCall tc, ToolResult result) {
+        String content = result.isSuccess() ? result.getOutput() : "Error: " + result.getError();
+        context.addMessage(Message.tool(content, tc.getId()));
     }
 
     // ==================== LLM 调用 ====================
@@ -247,7 +386,6 @@ public class AgentLoop {
         AtomicBoolean cancelled = new AtomicBoolean(false);
 
         llmClient.chatStreamWithTools(history, tools, new LLMClient.StreamHandler() {
-
             @Override
             public void onEvent(StreamEvent event) {
                 if (cancelled.get()) return;
@@ -294,36 +432,105 @@ public class AgentLoop {
 
         if (error.get() != null) {
             cancelled.set(true);
-            log.error("LLM 调用失败: {} - {}", error.get().getClass().getName(), error.get().getMessage());
-            if (error.get().getCause() != null) {
-                log.error("LLM 调用失败原因: {}", error.get().getCause().getMessage());
+            // 检查是否为上下文溢出错误
+            Exception ex = error.get();
+            if (isContextLengthError(ex)) {
+                log.warn("上下文溢出，需要压缩后重试: {}", ex.getMessage());
+                return new AgentTurnResult("", new ArrayList<>());
             }
+            log.error("LLM 调用失败: {} - {}", ex.getClass().getName(), ex.getMessage());
             return new AgentTurnResult("", new ArrayList<>());
         }
 
         return new AgentTurnResult(fullText.get(), toolCalls.get());
     }
 
-    // ==================== 子 Agent 支持 ====================
+    private boolean isContextLengthError(Throwable t) {
+        if (t == null) return false;
+        String msg = t.getMessage();
+        if (msg != null && (msg.contains("prompt_too_long")
+            || msg.contains("context_length_exceeded")
+            || msg.contains("maximum context length"))) {
+            return true;
+        }
+        return isContextLengthError(t.getCause());
+    }
 
-    /**
-     * 创建子 Agent（供 Task 工具使用）。
-     * 子 Agent：
-     * - 不跑 SkillRouter（避免递归激活 skill）
-     * - 共享主 Agent 的 toolRegistry、permissionGate
-     * - 最大迭代 15 轮
-     * - 超时 60 秒
-     */
+    // ==================== L4 compactHistory ====================
+
+    private String compactHistory(SessionContext context, long startTime) {
+        try {
+            List<Message> messages = context.getManagedHistory();
+            if (messages.isEmpty()) return null;
+
+            // 保存 transcript
+            if (compactionPipeline != null) {
+                Path transcriptDir = Path.of(".codemind", "transcripts");
+                Files.createDirectories(transcriptDir);
+                String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+                Path transcriptPath = transcriptDir.resolve(ts + ".jsonl");
+                Files.writeString(transcriptPath, messages.toString());
+            }
+
+            // 构建摘要 prompt
+            String conversation = messages.toString();
+            if (conversation.length() > 80000) conversation = conversation.substring(0, 80000);
+
+            String prompt = "Summarize this coding-agent conversation so work can continue.\n"
+                + "Preserve:\n"
+                + "1. Current goal / 当前目标\n"
+                + "2. Key findings and decisions / 关键发现与决策\n"
+                + "3. Files read and changed / 已读改文件列表\n"
+                + "4. Remaining work / 剩余工作\n"
+                + "5. User constraints and preferences / 用户约束\n\n"
+                + "Conversation:\n" + conversation;
+
+            // 检查超时余量（至少留 10 秒）
+            long elapsed = System.currentTimeMillis() - startTime;
+            if (maxExecutionTimeMs > 0 && elapsed > maxExecutionTimeMs - 10000) {
+                log.warn("执行时间不足，跳过 L4 摘要");
+                return null;
+            }
+
+            LLMResponse response = llmClient.chat(List.of(
+                Message.system("You are a conversation summarizer."),
+                Message.user(prompt)
+            ));
+
+            if (response.getContent() == null || response.getContent().isBlank()) {
+                log.warn("L4 摘要返回空");
+                return null;
+            }
+
+            return response.getContent();
+
+        } catch (Exception e) {
+            log.error("L4 摘要失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private boolean isTimeout(long startTime) {
+        return maxExecutionTimeMs > 0
+            && (System.currentTimeMillis() - startTime) >= maxExecutionTimeMs;
+    }
+
+    private void addToHistory(SessionContext context, AgentTurnResult turnResult) {
+        if (turnResult.hasToolCalls()) {
+            context.addMessage(Message.assistantWithTools(turnResult.fullText, turnResult.toolCalls));
+        } else {
+            context.addMessage(Message.assistant(turnResult.fullText));
+        }
+    }
+
+    // ==================== 子 Agent ====================
+
     public AgentLoop createSubAgent() {
         return new AgentLoop(
-            this.llmClient,
-            this.toolRegistry,
-            this.permissionGate,
-            this.outputFormatter,
-            15,          // maxIterations（子 Agent 减半）
-            60,          // maxExecutionTimeSeconds
-            null,        // skillRouter = null（不激活 skill）
-            null         // promptBuilder = null（用默认 system message）
+            this.llmClient, this.toolRegistry, this.permissionGate, this.outputFormatter,
+            15, 60, null, null, null, null
         );
     }
 
@@ -332,12 +539,10 @@ public class AgentLoop {
     private static class AgentTurnResult {
         final String fullText;
         final List<ToolCall> toolCalls;
-
         AgentTurnResult(String fullText, List<ToolCall> toolCalls) {
             this.fullText = fullText;
             this.toolCalls = toolCalls;
         }
-
         boolean hasToolCalls() {
             return toolCalls != null && !toolCalls.isEmpty();
         }

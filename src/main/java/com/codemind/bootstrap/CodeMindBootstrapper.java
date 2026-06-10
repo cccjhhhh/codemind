@@ -17,12 +17,15 @@ import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.safety.PermissionGateImpl.PermissionRule;
+import com.codemind.impl.session.CompactionPipeline;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.session.SlidingWindowContextManager;
+import com.codemind.core.TokenBudget;
 import com.codemind.impl.skill.ClasspathSkillProvider;
 import com.codemind.impl.skill.DirectorySkillProvider;
 import com.codemind.impl.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillRegistry;
+import com.codemind.impl.skill.routing.ConfidenceSkillRouter;
 import com.codemind.impl.skill.routing.SkillRouter;
 import com.codemind.impl.tool.*;
 
@@ -97,8 +100,8 @@ public class CodeMindBootstrapper {
         // 6. 大语言模型
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
 
-        // 7. 技能路由器
-        SkillRouter skillRouter = new SkillRouter(skills);
+        // 7. 技能路由器（置信度路由 + 关键词兜底）
+        SkillRouter skillRouter = new ConfidenceSkillRouter(skills);
 
         // 8. 系统提示构建器
         SystemPromptBuilder promptBuilder = new SystemPromptBuilder(toolRegistry, skillRegistry);
@@ -122,16 +125,37 @@ public class CodeMindBootstrapper {
         ));
         session.setSystemMessage(promptBuilder.build(session));
 
-        // 10. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
+        // 10. 创建 CompactionPipeline
+        Settings.CompactionConfig compCfg = settings.getContext().getCompaction();
+        Path spillDirResolved = Path.of(truncationCfg.getSpillDir());
+        CompactionPipeline compactionPipeline = new CompactionPipeline(
+            compCfg.getMaxMessagesBeforeSnip(),
+            compCfg.getKeepRecentToolResults(),
+            compCfg.getBudgetMaxBytes(),
+            spillDirResolved,
+            truncationCfg.getSpillThresholdChars(),
+            session.getSessionId(),
+            compCfg.isSaveTranscripts()
+        );
+
+        // 11. 创建 TokenBudget
+        TokenBudget tokenBudget = new TokenBudget(
+            contextManager.getTokenCountService(),
+            contextManager.getReservedResponseTokens(),
+            settings.getContext().getWindow().getTargetRatio()
+        );
+
+        // 12. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
         int effectiveMaxIterations = settings.getAgent().getMaxIterations();
         int effectiveTimeout = settings.getAgent().getTimeoutSeconds();
         if (maxIterations != 50) effectiveMaxIterations = maxIterations;
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
 
-        // 11. Agent 循环
+        // 13. Agent 循环
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
-            effectiveMaxIterations, effectiveTimeout, skillRouter, promptBuilder
+            effectiveMaxIterations, effectiveTimeout, skillRouter, promptBuilder,
+            compactionPipeline, tokenBudget
         );
 
         // 注册依赖 AgentLoop 的工具

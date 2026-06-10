@@ -2,26 +2,30 @@ package com.codemind.impl.hook;
 
 import com.codemind.api.tool.ToolHook;
 import com.codemind.api.tool.ToolResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
-/**
- * 指标钩子 — 记录工具调用的执行耗时、结果大小、调用次数。
- * preExecute 递增调用计数器，postExecute 打印 INFO 日志（toolName, 耗时, 结果长度, 状态）。
- * 无副作用，仅用于监控和调试。
- */
 public class MetricsHook implements ToolHook {
 
     private static final Logger log = LoggerFactory.getLogger(MetricsHook.class);
-    private final Map<String, AtomicInteger> callCounts = new ConcurrentHashMap<>();
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    private final Map<String, Integer> toolCallCounts = new ConcurrentHashMap<>();
+    private final Map<String, Integer> toolFailureCounts = new ConcurrentHashMap<>();
 
     @Override
     public void preExecute(String toolName, Map<String, Object> args) {
-        callCounts.computeIfAbsent(toolName, k -> new AtomicInteger()).incrementAndGet();
+        toolCallCounts.merge(toolName, 1, Integer::sum);
     }
 
     @Override
@@ -29,5 +33,40 @@ public class MetricsHook implements ToolHook {
         int resultLen = result.isSuccess() ? (result.getOutput() != null ? result.getOutput().length() : 0) : 0;
         log.info("Tool {} 执行了 {}ms，结果 {} 字符，状态: {}",
             toolName, elapsedMs, resultLen, result.isSuccess() ? "成功" : "失败");
+
+        if (!result.isSuccess()) {
+            toolFailureCounts.merge(toolName, 1, Integer::sum);
+        }
+    }
+
+    public void logSessionMetrics(String sessionId, boolean success, int totalIterations,
+                                   long totalElapsedMs, int permissionDenials,
+                                   boolean l4Triggered, int recoveryCount, String model) {
+        try {
+            Path metricsDir = Path.of(".codemind", "metrics", "session");
+            Files.createDirectories(metricsDir);
+            Map<String, Object> record = new LinkedHashMap<>();
+            record.put("sessionId", sessionId);
+            record.put("success", success);
+            record.put("totalIterations", totalIterations);
+            record.put("totalElapsedMs", totalElapsedMs);
+            record.put("toolCalls", new LinkedHashMap<>(toolCallCounts));
+            record.put("toolFailures", toolFailureCounts.values().stream().mapToInt(Integer::intValue).sum());
+            record.put("permissionDenials", permissionDenials);
+            record.put("L4Triggered", l4Triggered);
+            record.put("recoveryCount", recoveryCount);
+            record.put("model", model);
+            record.put("timestamp", LocalDateTime.now().toString());
+
+            String json = JSON.writeValueAsString(record);
+            Files.writeString(metricsDir.resolve(sessionId + ".jsonl"), json + "\n",
+                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+
+            // 重置计数器
+            toolCallCounts.clear();
+            toolFailureCounts.clear();
+        } catch (IOException e) {
+            log.warn("写入 session 指标失败: {}", e.getMessage());
+        }
     }
 }
