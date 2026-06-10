@@ -1,6 +1,7 @@
 package com.codemind.impl.llm;
 
 import com.codemind.api.llm.*;
+import com.codemind.exception.ContextLengthException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -69,10 +70,13 @@ public class OpenAIClient implements LLMClient {
                 return parseResponse(response.body().string());
             }
         } catch (Exception e) {
+            if (isContextLengthError(e)) {
+                throw new ContextLengthException("LLM API 上下文长度超限", e);
+            }
             throw new RuntimeException("调用 LLM API 失败", e);
         }
     }
-    
+
     @Override
     public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
         try {
@@ -93,10 +97,13 @@ public class OpenAIClient implements LLMClient {
                 return parseResponse(response.body().string());
             }
         } catch (Exception e) {
+            if (isContextLengthError(e)) {
+                throw new ContextLengthException("LLM API 上下文长度超限", e);
+            }
             throw new RuntimeException("调用 LLM API (with tools) 失败", e);
         }
     }
-    
+
     @Override
     public void chatStream(List<Message> messages, StreamHandler handler) {
         chatStreamWithTools(messages, null, handler);
@@ -425,5 +432,20 @@ public class OpenAIClient implements LLMClient {
         function.set("parameters", tool.getFunction().getParameters());
         
         return node;
+    }
+
+    /**
+     * 判断异常是否由上下文长度超限引起（遍历 cause 链）。
+     */
+    private static boolean isContextLengthError(Exception e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            String msg = t.getMessage();
+            if (msg != null && (msg.contains("prompt_too_long")
+                    || msg.contains("context_length_exceeded")
+                    || msg.contains("maximum context length"))) {
+                return true;
+            }
+        }
+        return false;
     }
 }
