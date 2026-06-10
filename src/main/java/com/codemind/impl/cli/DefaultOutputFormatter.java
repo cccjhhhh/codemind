@@ -40,7 +40,13 @@ public class DefaultOutputFormatter implements OutputFormatter {
     
     // Skill 图标
     private static final String SKILL_ICON = "🎯";
-    
+
+    private boolean verbose = false;
+
+    public void setVerbose(boolean verbose) {
+        this.verbose = verbose;
+    }
+
     @Override
     public String formatToolCallStart(String toolName, Map<String, Object> params) {
         StringBuilder sb = new StringBuilder();
@@ -90,10 +96,17 @@ public class DefaultOutputFormatter implements OutputFormatter {
             String outputPreview = getOutputPreview(result.getOutput());
             sb.append(AnsiStyles.DIM).append("   ↳ ").append(AnsiStyles.RESET)
               .append(AnsiStyles.GREEN).append("✓ 完成").append(AnsiStyles.RESET);
-            
+
             if (outputPreview != null && !outputPreview.isEmpty()) {
                 sb.append(AnsiStyles.DIM).append(" → ").append(AnsiStyles.RESET)
                   .append(outputPreview);
+            }
+
+            // Verbose: append first 200 chars of output
+            if (verbose && result.getOutput() != null && result.getOutput().length() > 200) {
+                sb.append("\n")
+                  .append(AnsiStyles.DIM).append(result.getOutput().substring(0, 200)).append("...")
+                  .append(AnsiStyles.RESET);
             }
         } else {
             sb.append(AnsiStyles.DIM).append("   ↳ ").append(AnsiStyles.RESET)

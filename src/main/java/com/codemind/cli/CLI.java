@@ -124,6 +124,12 @@ public class CLI implements Runnable {
         var promptBuilder = bootResult.promptBuilder();
         ModelManager modelManager = bootResult.modelManager();
 
+        // Wire --verbose flag
+        if (verbose) {
+            System.setProperty("codemind.verbose", "true");
+            ((DefaultOutputFormatter) outputFormatter).setVerbose(true);
+        }
+
         // Display current model
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
         System.out.println();
