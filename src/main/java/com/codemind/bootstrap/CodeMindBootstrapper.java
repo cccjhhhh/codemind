@@ -32,6 +32,10 @@ import java.util.List;
 public class CodeMindBootstrapper {
 
     public BootstrapResult bootstrap(Path projectDir) {
+        return bootstrap(projectDir, 50, 300, null);
+    }
+
+    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds, Path configPath) {
         // 1. 基础设施
         DefaultOutputFormatter outputFormatter = new DefaultOutputFormatter();
         CLIPermissionPrompter prompter = new CLIPermissionPrompter(outputFormatter);
@@ -113,10 +117,16 @@ public class CodeMindBootstrapper {
         ));
         session.setSystemMessage(promptBuilder.build(session));
 
-        // 10. Agent 循环
+        // 10. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
+        int effectiveMaxIterations = settings.getAgent().getMaxIterations();
+        int effectiveTimeout = settings.getAgent().getTimeoutSeconds();
+        if (maxIterations != 50) effectiveMaxIterations = maxIterations;
+        if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
+
+        // 11. Agent 循环
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
-            50, 300, skillRouter, promptBuilder
+            effectiveMaxIterations, effectiveTimeout, skillRouter, promptBuilder
         );
 
         // 注册依赖 AgentLoop 的工具

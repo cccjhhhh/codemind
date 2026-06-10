@@ -111,7 +111,8 @@ public class CLI implements Runnable {
         
         // Use CodeMindBootstrapper for everything
         CodeMindBootstrapper bootstrapper = new CodeMindBootstrapper();
-        var bootResult = bootstrapper.bootstrap(projectDir);
+        var bootResult = bootstrapper.bootstrap(projectDir, maxIterations, timeoutSeconds,
+            configPath != null && !configPath.isEmpty() ? Path.of(configPath) : null);
 
         this.toolRegistry = bootResult.toolRegistry();
         this.permissionGate = bootResult.permissionGate();

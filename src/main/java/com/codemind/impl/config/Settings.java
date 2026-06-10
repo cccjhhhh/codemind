@@ -13,6 +13,7 @@ public class Settings {
     private ContextConfig context = new ContextConfig();
     private Map<String, ModelConfig> models = Map.of();
     private String currentModel = "";
+    private AgentConfig agent = new AgentConfig();
 
     public List<String> getSkillDirectories() { return skillDirectories; }
     public void setSkillDirectories(List<String> skillDirectories) { this.skillDirectories = skillDirectories; }
@@ -26,6 +27,8 @@ public class Settings {
     public void setModels(Map<String, ModelConfig> models) { this.models = models; }
     public String getCurrentModel() { return currentModel; }
     public void setCurrentModel(String currentModel) { this.currentModel = currentModel; }
+    public AgentConfig getAgent() { return agent; }
+    public void setAgent(AgentConfig agent) { this.agent = agent; }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Permissions {
@@ -83,5 +86,16 @@ public class Settings {
         public void setTargetRatio(double targetRatio) { this.targetRatio = targetRatio; }
         public int getStaleRounds() { return staleRounds; }
         public void setStaleRounds(int staleRounds) { this.staleRounds = staleRounds; }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class AgentConfig {
+        private int maxIterations = 50;
+        private int timeoutSeconds = 300;
+
+        public int getMaxIterations() { return maxIterations; }
+        public void setMaxIterations(int v) { this.maxIterations = v; }
+        public int getTimeoutSeconds() { return timeoutSeconds; }
+        public void setTimeoutSeconds(int v) { this.timeoutSeconds = v; }
     }
 }
