@@ -285,14 +285,14 @@ public class DefaultOutputFormatter implements OutputFormatter {
                 yield "执行命令";
             }
             case "Read" -> {
-                Object path = params.get("filePath");
+                Object path = params.get("path");
                 if (path != null) {
                     yield path.toString();
                 }
                 yield "读取文件";
             }
             case "Write" -> {
-                Object writePath = params.get("filePath");
+                Object writePath = params.get("path");
                 if (writePath != null) {
                     yield writePath.toString();
                 }
@@ -401,7 +401,7 @@ public class DefaultOutputFormatter implements OutputFormatter {
         if (toolName == null || paramName == null) return false;
         return switch (toolName) {
             case "Bash" -> "command".equals(paramName);
-            case "Read" -> "filePath".equals(paramName);
+            case "Read" -> "path".equals(paramName);
             case "Write" -> "filePath".equals(paramName);
             case "Edit" -> "filePath".equals(paramName);
             case "Grep" -> "pattern".equals(paramName) || "query".equals(paramName);

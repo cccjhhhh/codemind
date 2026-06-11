@@ -171,9 +171,10 @@ public class OpenAIClient implements LLMClient {
                                 if ("[DONE]".equals(json)) {
                                     // 流结束，发送 MESSAGE_COMPLETE
                                     StreamEvent complete = StreamEvent.messageComplete(
-                                        fullText.toString(), 
-                                        toolCalls, 
-                                        totalTokens
+                                        fullText.toString(),
+                                        toolCalls,
+                                        totalTokens,
+                                        null
                                     );
                                     handler.onEvent(complete);
                                     handler.onComplete(fullText.toString());
@@ -253,7 +254,7 @@ public class OpenAIClient implements LLMClient {
                                             
                                             // 发送 MESSAGE_COMPLETE 事件
                                             StreamEvent complete = StreamEvent.messageComplete(
-                                                fullText.toString(), toolCalls, totalTokens
+                                                fullText.toString(), toolCalls, totalTokens, finishReason
                                             );
                                             handler.onEvent(complete);
                                             handler.onComplete(fullText.toString());

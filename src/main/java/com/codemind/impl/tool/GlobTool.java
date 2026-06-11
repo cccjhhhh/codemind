@@ -102,7 +102,7 @@ public class GlobTool implements Tool {
                 return ToolResult.failure("参数 'pattern' 是必需的");
             }
 
-            Path searchPath = pathStr != null ? Path.of(pathStr) : Path.of(".");
+            Path searchPath = pathStr != null ? Path.of(pathStr).toAbsolutePath().normalize() : Path.of(".").toAbsolutePath().normalize();
             int limit = maxResults != null ? maxResults : DEFAULT_MAX_RESULTS;
             boolean loadGitignore = includeGitignore == null || includeGitignore;
 
@@ -119,7 +119,14 @@ public class GlobTool implements Tool {
             List<String> matchedFiles = findFiles(searchPath, patternMatcher, excludeRules, limit);
 
             if (matchedFiles.isEmpty()) {
-                return ToolResult.success("未找到匹配文件: " + patternStr);
+                // 诊断：检查路径是否存在
+                if (!Files.exists(searchPath)) {
+                    return ToolResult.failure("路径不存在: " + searchPath);
+                }
+                if (!Files.isDirectory(searchPath)) {
+                    return ToolResult.failure("路径不是目录: " + searchPath);
+                }
+                return ToolResult.success("未找到匹配文件: " + patternStr + " (路径: " + searchPath + ")");
             }
 
             // 格式化输出
@@ -185,7 +192,7 @@ public class GlobTool implements Tool {
                 .map(path -> root.relativize(path).toString().replace("\\", "/"))
                 .forEach(results::add);
         } catch (IOException e) {
-            // 忽略遍历错误
+            java.lang.System.err.println("[GlobTool] 遍历目录失败: " + root + " - " + e.getMessage());
         }
 
         return results;

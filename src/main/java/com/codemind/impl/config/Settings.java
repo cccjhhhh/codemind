@@ -2,6 +2,7 @@ package com.codemind.impl.config;
 
 import com.codemind.api.llm.ModelConfig;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import java.util.List;
 import java.util.Map;
 
@@ -71,7 +72,7 @@ public class Settings {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Truncation {
-        private int spillThresholdChars = 2000;
+        private int spillThresholdChars = 8000;
         private String spillDir = ".codemind/spill";
 
         public int getSpillThresholdChars() { return spillThresholdChars; }
