@@ -17,7 +17,6 @@ public class SlidingWindowContextManager implements ContextWindowManager {
     private final TokenCountService tokenCountService;
     private int reservedResponseTokens;
     private double targetRatio = 0.8;
-    private int staleRounds = 5;
 
     public SlidingWindowContextManager() {
         this(new JTokkitTokenCountService());
@@ -33,7 +32,6 @@ public class SlidingWindowContextManager implements ContextWindowManager {
     }
 
     public void setTargetRatio(double targetRatio) { this.targetRatio = targetRatio; }
-    public void setStaleRounds(int staleRounds) { this.staleRounds = staleRounds; }
 
     @Override
     public List<Message> manageWindow(List<Message> messages, Message systemMessage) {
@@ -42,11 +40,18 @@ public class SlidingWindowContextManager implements ContextWindowManager {
         if (systemMessage != null) {
             result.add(systemMessage);
         }
-        // 移除其他 SYSTEM 角色消息（旧 L1/L2 逻辑已由 CompactionPipeline 处理）
+        // 移除其他 SYSTEM 角色消息
         for (Message msg : messages) {
             if (msg.getRole() == Message.Role.SYSTEM) continue;
             result.add(msg);
         }
+
+        // 【harness 规则 03】SlidingWindowManager 不做工具结果占位（由 L2 统一处理）
+        // 仅做窗口裁剪：超出预算时删除最旧的 USER 消息
+        if (isOverLimit(result)) {
+            result = trimMessages(result, systemMessage != null);
+        }
+
         return result;
     }
 
@@ -128,21 +133,4 @@ public class SlidingWindowContextManager implements ContextWindowManager {
         return result;
     }
 
-    private List<Message> replaceStaleToolResults(List<Message> messages, boolean hasSystem) {
-        List<Message> result = new ArrayList<>(messages);
-        int startIndex = hasSystem && result.get(0).getRole() == Message.Role.SYSTEM ? 1 : 0;
-
-        int assistantCount = 0;
-        for (int i = result.size() - 1; i >= startIndex; i--) {
-            Message msg = result.get(i);
-            if (msg.getRole() == Message.Role.ASSISTANT && !msg.hasToolCalls()) {
-                assistantCount++;
-            }
-            if (msg.getRole() == Message.Role.TOOL && assistantCount >= staleRounds) {
-                result.set(i, Message.tool("[工具结果已省略]", msg.getToolCallId()));
-            }
-        }
-
-        return result;
-    }
 }

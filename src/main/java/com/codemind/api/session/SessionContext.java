@@ -1,7 +1,7 @@
 package com.codemind.api.session;
 
 import com.codemind.api.llm.Message;
-import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.api.skill.SkillDefinition;
 
 import com.codemind.api.llm.ToolCall;
 import java.nio.file.Path;

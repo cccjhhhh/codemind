@@ -1,7 +1,7 @@
 package com.codemind.impl.skill.routing;
 
 import com.codemind.dto.skill.SkillRouteDto;
-import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.api.skill.SkillDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

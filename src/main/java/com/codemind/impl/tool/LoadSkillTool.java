@@ -2,7 +2,7 @@ package com.codemind.impl.tool;
 
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.skill.SkillEntry;
+import com.codemind.api.skill.SkillEntry;
 import com.codemind.impl.skill.SkillRegistry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

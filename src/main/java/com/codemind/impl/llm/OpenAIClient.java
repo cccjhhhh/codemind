@@ -1,7 +1,8 @@
 package com.codemind.impl.llm;
 
+import com.codemind.common.exception.LLMException;
+import com.codemind.common.exception.ContextOverflowException;
 import com.codemind.api.llm.*;
-import com.codemind.exception.ContextLengthException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -71,9 +72,9 @@ public class OpenAIClient implements LLMClient {
             }
         } catch (Exception e) {
             if (isContextLengthError(e)) {
-                throw new ContextLengthException("LLM API 上下文长度超限", e);
+                throw new ContextOverflowException("LLM API 上下文长度超限", e);
             }
-            throw new RuntimeException("调用 LLM API 失败", e);
+            throw new LLMException("调用 LLM API 失败", e);
         }
     }
 
@@ -98,9 +99,9 @@ public class OpenAIClient implements LLMClient {
             }
         } catch (Exception e) {
             if (isContextLengthError(e)) {
-                throw new ContextLengthException("LLM API 上下文长度超限", e);
+                throw new ContextOverflowException("LLM API 上下文长度超限", e);
             }
-            throw new RuntimeException("调用 LLM API (with tools) 失败", e);
+            throw new LLMException("调用 LLM API (with tools) 失败", e);
         }
     }
 
@@ -134,9 +135,17 @@ public class OpenAIClient implements LLMClient {
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     if (!response.isSuccessful()) {
-                        String errorBody = response.body() != null ? response.body().string() : "Unknown error";
+                        String errorBody;
+                        try (ResponseBody respBody = response.body()) {
+                            errorBody = respBody != null ? respBody.string() : "Unknown error";
+                        }
                         IOException e = new IOException("API 请求失败: " + response.code() + " - " + errorBody);
-                        handler.onEvent(StreamEvent.error(e));
+                        // 在流式路径中也检查上下文长度错误
+                        if (isContextLengthError(e)) {
+                            handler.onEvent(StreamEvent.error(new ContextOverflowException("LLM API 上下文长度超限", e)));
+                        } else {
+                            handler.onEvent(StreamEvent.error(e));
+                        }
                         handler.onError(e);
                         return;
                     }

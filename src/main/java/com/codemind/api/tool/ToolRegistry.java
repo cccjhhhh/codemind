@@ -1,7 +1,7 @@
 package com.codemind.api.tool;
 
 import com.codemind.api.llm.ToolDefinition;
-import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.api.skill.SkillDefinition;
 import java.util.List;
 import java.util.Map;
 

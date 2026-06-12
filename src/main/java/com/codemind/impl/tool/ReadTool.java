@@ -105,6 +105,13 @@ public class ReadTool implements Tool {
         int start = offset != null ? offset : 0;
         int end = limit != null ? Math.min(start + limit, lines.length) : lines.length;
         
+        // 范围超出文件行数时返回明确提示而非空字符串
+        if (start >= lines.length) {
+            int reqLimit = limit != null ? limit : 0;
+            return "[EOF] 文件共 " + lines.length + " 行，请求范围 "
+                + start + "-" + (start + reqLimit) + " 超出文件末尾。";
+        }
+
         StringBuilder sb = new StringBuilder();
         for (int i = start; i < end && i < lines.length; i++) {
             sb.append(i + 1).append(": ").append(lines[i]).append("\n");

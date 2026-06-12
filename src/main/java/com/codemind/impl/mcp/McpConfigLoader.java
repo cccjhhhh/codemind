@@ -1,7 +1,7 @@
 package com.codemind.impl.mcp;
 
-import com.codemind.api.mcp.McpConfigException;
 import com.codemind.api.mcp.McpServerConfig;
+import com.codemind.common.exception.McpConfigException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
@@ -27,9 +27,8 @@ public class McpConfigLoader {
      *
      * @param configFile 配置文件路径
      * @return 服务器配置映射
-     * @throws McpConfigException 配置文件格式错误时抛出
      */
-    public Map<String, McpServerConfig> load(Path configFile) throws McpConfigException {
+    public Map<String, McpServerConfig> load(Path configFile) {
         Map<String, McpServerConfig> servers = new HashMap<>();
 
         File file = configFile.toFile();
@@ -63,9 +62,8 @@ public class McpConfigLoader {
      *
      * @param configFile 配置文件路径
      * @param servers 服务器配置映射
-     * @throws McpConfigException 保存失败时抛出
      */
-    public void save(Path configFile, Map<String, McpServerConfig> servers) throws McpConfigException {
+    public void save(Path configFile, Map<String, McpServerConfig> servers) {
         try {
             Map<String, Object> root = new HashMap<>();
             root.put("mcpServers", servers);

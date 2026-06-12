@@ -4,7 +4,7 @@ package com.codemind.core;
  * Agent 主循环的状态转移原因 / 下一步动作。
  *
  * 语义分组：
- * ─ 正常流转 — NEXT_TURN / COMPLETE
+ * ─ 正常流转 — THINK → ACT → THINK / COMPLETE
  * ─ 模型侧恢复 — RECOVERY_ESCALATE / CONTINUATION / TOKEN_BUDGET_CONTINUE
  * ─ 网络侧恢复 — RETRY_BACKOFF
  * ─ 工具侧恢复 — RECOVERY_FAILOVER / LOOP_DETECTED
@@ -15,8 +15,11 @@ public enum ContinueReason {
 
     // ========== 正常 ==========
 
-    /** 正常执行一轮后继续下一轮 */
-    NEXT_TURN,
+    /** THINK: LLM 推理 + 工具决策 → 下一步 ACT 或 COMPLETE */
+    THINK,
+
+    /** ACT: 执行 THINK 选定的工具 */
+    ACT,
 
     /** LLM 回复完成，Agent 任务结束 */
     COMPLETE,

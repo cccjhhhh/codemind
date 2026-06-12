@@ -23,7 +23,7 @@ import com.codemind.impl.session.SlidingWindowContextManager;
 import com.codemind.core.TokenBudget;
 import com.codemind.impl.skill.ClasspathSkillProvider;
 import com.codemind.impl.skill.DirectorySkillProvider;
-import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.api.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillRegistry;
 import com.codemind.impl.skill.routing.ConfidenceSkillRouter;
 import com.codemind.impl.skill.routing.SkillRouter;
@@ -76,7 +76,7 @@ public class CodeMindBootstrapper {
         // 从 settings.json 加载权限规则
         if (!settings.getPermissions().getRules().isEmpty()) {
             var rules = settings.getPermissions().getRules().stream()
-                .map(r -> new PermissionRule(r.getTool(), r.getCondition(), PermissionLevel.valueOf(r.getLevel())))
+                .map(r -> new PermissionRule(r.getTool(), PermissionLevel.valueOf(r.getLevel())))
                 .toList();
             permissionGate.setRules(rules);
         }
@@ -123,17 +123,14 @@ public class CodeMindBootstrapper {
             modelManager.getCurrentModelId()
         );
         contextManager.setTargetRatio(settings.getContext().getWindow().getTargetRatio());
-        contextManager.setStaleRounds(settings.getContext().getWindow().getStaleRounds());
         SessionManagerImpl sessionManager = new SessionManagerImpl(contextManager);
         SessionContext session = sessionManager.createSession();
         session.setWorkingDirectory(projectDir);
 
-        // TruncationHook（在 session 之后创建，以获取 sessionId 隔离 spill 路径）
+        // TruncationHook — 只做预览不做落盘（落盘由 L3 统一处理）
         var truncationCfg = settings.getContext().getTruncation();
         toolRegistry.registerHook(new TruncationHook(
-            truncationCfg.getSpillThresholdChars(),
-            truncationCfg.getSpillDir(),
-            session.getSessionId()
+            truncationCfg.getSpillThresholdChars()
         ));
         session.setSystemMessage(promptBuilder.build(session));
 
@@ -163,14 +160,12 @@ public class CodeMindBootstrapper {
         if (maxIterations != 50) effectiveMaxIterations = maxIterations;
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
 
-        // MCP 初始化
-        McpToolRegistry mcpToolRegistry = new McpToolRegistry();
+        // MCP 初始化 — 适配为 Tool 接口后注册到主 ToolRegistry，获得完整 Hook 链
         try {
             Path mcpConfigPath = Path.of(System.getProperty("user.home"), ".codemind", "mcp.json");
             McpConfigLoader configLoader = new McpConfigLoader();
             Map<String, McpServerConfig> mcpServers = configLoader.load(mcpConfigPath);
 
-            // 连接已启用的 MCP 服务器并注册工具
             McpClientFactory clientFactory = new McpClientFactoryImpl();
             McpToolAdapter toolAdapter = new McpToolAdapterImpl();
 
@@ -184,12 +179,10 @@ public class CodeMindBootstrapper {
                         client.connect(config);
 
                         List<McpToolDefinition> tools = client.listTools();
-                        List<com.codemind.api.tool.Tool> adaptedTools = new ArrayList<>();
-                        for (McpToolDefinition tool : tools) {
-                            adaptedTools.add(toolAdapter.adapt(tool, client));
+                        for (McpToolDefinition toolDef : tools) {
+                            com.codemind.api.tool.Tool adapted = toolAdapter.adapt(toolDef, client);
+                            toolRegistry.register(adapted); // 注册到主 ToolRegistry → 自动获得 Hook 链
                         }
-
-                        mcpToolRegistry.registerServerTools(serverName, adaptedTools);
                         System.out.println("Connected to MCP server: " + serverName);
                     } catch (Exception e) {
                         System.out.println("Failed to connect to MCP server " + serverName + ": " + e.getMessage());
@@ -200,11 +193,11 @@ public class CodeMindBootstrapper {
             System.out.println("Failed to load MCP config: " + e.getMessage());
         }
 
-        // 13. Agent 循环
+        // 13. Agent 循环（MCP 工具已注册到主 ToolRegistry）
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
             effectiveMaxIterations, effectiveTimeout, skillRouter, promptBuilder,
-            compactionPipeline, tokenBudget, mcpToolRegistry
+            compactionPipeline, tokenBudget
         );
 
         // 注册依赖 AgentLoop 的工具

@@ -12,8 +12,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
 
 public class BashTool implements Tool {
 
@@ -21,14 +21,43 @@ public class BashTool implements Tool {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
 
+    /** Unix 命令 → Windows 等效命令的映射 */
+    private static final Map<String, String> WIN_CMD_ALIASES = Map.ofEntries(
+        Map.entry("head", "findstr /n"),
+        Map.entry("tail", "findstr /n"),
+        Map.entry("grep", "findstr"),
+        Map.entry("cat", "type"),
+        Map.entry("less", "more"),
+        Map.entry("more", "more"),
+        Map.entry("cp", "copy"),
+        Map.entry("mv", "move"),
+        Map.entry("rm", "del"),
+        Map.entry("mkdir", "mkdir"),
+        Map.entry("touch", "copy /b nul+"),
+        Map.entry("diff", "fc"),
+        Map.entry("sort", "sort"),
+        Map.entry("uniq", "sort /unique"),
+        Map.entry("wc", "findstr /c:")
+    );
+
+    /** 已知 Windows 上不存在的命令集合（用于给出提示） */
+    private static final Set<String> UNIX_ONLY_COMMANDS = Set.of(
+        "sudo", "chmod", "chown", "ln", "ps", "kill", "whoami",
+        "which", "curl", "wget", "unzip", "tar", "gzip"
+    );
+
     @Override
     public String getName() { return "Bash"; }
 
     @Override
     public String getDescription() {
+        String os = isWindows() ? "Windows (cmd.exe)" : "Unix (sh)";
         return "执行 shell 命令并返回输出结果。\n" +
-               "注意：命令会在工作目录下执行。\n" +
-               "Windows 系统使用 'cmd /c'，Unix 系统使用 'sh -c'。";
+               "当前环境: " + os + "\n" +
+               (isWindows()
+                 ? "注意：Windows 环境部分 Unix 命令不可用（如 grep→findstr, head→findstr /n, cat→type）。\n"
+                 : "") +
+               "命令会在当前工作目录下执行。";
     }
 
     @Override
@@ -73,22 +102,23 @@ public class BashTool implements Tool {
                 log.debug("BashTool: cwd={}", workingDir.getAbsolutePath());
             }
 
+            // 跨平台命令适配：Windows 上自动翻译常见 Unix 命令
+            String adaptedCommand = isWindows() ? adaptCommandForWindows(command) : command;
+            log.debug("Executing command: {} (adapted: {})", command, adaptedCommand);
+
             ProcessBuilder pb = new ProcessBuilder();
             if (isWindows()) {
-                pb.command("cmd", "/c", command);
+                pb.command("cmd", "/c", adaptedCommand);
             } else {
-                pb.command("sh", "-c", command);
+                pb.command("sh", "-c", adaptedCommand);
             }
             if (workingDir != null) pb.directory(workingDir);
             pb.redirectErrorStream(true);
 
-            log.debug("Executing command: {}", command);
             Process process = pb.start();
 
             StringBuilder output = new StringBuilder();
-            Charset charset = isWindows()
-                ? Charset.forName(System.getProperty("sun.jnu.encoding", "GBK"))
-                : StandardCharsets.UTF_8;
+            Charset charset = Charset.defaultCharset();
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), charset))) {
                 String line;
@@ -118,5 +148,29 @@ public class BashTool implements Tool {
 
     private static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase().contains("win");
+    }
+
+    /**
+     * 将 Unix 风格命令转换为 Windows 等效命令。
+     * 只翻译简单命令（第一个词匹配已知别名），复杂管线不处理。
+     */
+    private static String adaptCommandForWindows(String command) {
+        if (command == null || command.isEmpty()) return command;
+        String trimmed = command.trim();
+        // 从管线中提取第一个命令
+        String firstCmd = trimmed.split("\\||;|&")[0].trim().split("\\s+")[0];
+        String winCmd = WIN_CMD_ALIASES.get(firstCmd);
+        if (winCmd != null) {
+            String rest = trimmed.substring(firstCmd.length());
+            log.debug("命令翻译: '{}' → '{}'", firstCmd, winCmd);
+            return winCmd + rest;
+        }
+        // 检查是否使用了已知的 Unix-only 命令
+        for (String unixCmd : UNIX_ONLY_COMMANDS) {
+            if (trimmed.startsWith(unixCmd + " ") || trimmed.equals(unixCmd)) {
+                log.warn("命令 '{}' 在 Windows 上不可用", unixCmd);
+            }
+        }
+        return trimmed;
     }
 }

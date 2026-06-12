@@ -3,6 +3,7 @@ package com.codemind.impl.tool;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
+import com.codemind.core.async.TaskDelegationService;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,23 +12,27 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Stream;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
+/**
+ * Task 工具：将复杂任务委派给子 Agent 执行。
+ *
+ * 使用 {@link TaskDelegationService} 的线程池管理子任务执行，
+ * 遵循阿里巴巴线程池规范：统一管理、有界队列、可命名线程。
+ */
 public class TaskTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(TaskTool.class);
     private static final ObjectMapper JSON = new ObjectMapper();
-    private final AgentLoop parentLoop;
-    private final Path workingDirectory;
+    private static final int SUBTASK_TIMEOUT_SECONDS = 120;
+
+    private final TaskDelegationService delegationService;
 
     public TaskTool(AgentLoop parentLoop, Path workingDirectory) {
-        this.parentLoop = parentLoop;
-        this.workingDirectory = workingDirectory;
+        this.delegationService = new TaskDelegationService(parentLoop, workingDirectory);
     }
 
     @Override
@@ -59,39 +64,25 @@ public class TaskTool implements Tool {
         }
 
         try {
-            AgentLoop subAgent = parentLoop.createSubAgent();
-            SessionContext subContext = new SessionContext(UUID.randomUUID().toString());
-            subContext.setWorkingDirectory(workingDirectory);
-            subContext.setSystemMessage("你是 CodeMind 的子 Agent。执行以下任务，只返回最终结果。");
-
-            AgentResult result = subAgent.run(instruction, subContext);
-
-            // 清理子 Agent 产生的临时文件（temp_*）
-            cleanupTempFiles();
+            Future<AgentResult> future = delegationService.delegate(instruction);
+            AgentResult result = future.get(SUBTASK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
 
             if (result.isSuccess()) {
                 return ToolResult.success(result.getMessage());
             } else {
                 return ToolResult.failure("子任务失败: " + result.getError());
             }
+        } catch (java.util.concurrent.TimeoutException e) {
+            return ToolResult.failure("子任务执行超时(" + SUBTASK_TIMEOUT_SECONDS + "s)");
         } catch (Exception e) {
             return ToolResult.failure("子任务异常: " + e.getMessage());
         }
     }
 
     /**
-     * 清理子 Agent 遗留的临时文件（如 temp_read_*.java）。
-     * 匹配工作目录下 temp_ 前缀的文件，避免残留。
+     * 获取 TaskDelegationService，用于外部（如 Bootstrap）在关闭时优雅关闭线程池。
      */
-    private void cleanupTempFiles() {
-        try {
-            try (Stream<Path> files = Files.list(workingDirectory)) {
-                files.filter(p -> p.getFileName().toString().startsWith("temp_"))
-                     .peek(p -> log.debug("清理子 Agent 临时文件: {}", p.getFileName()))
-                     .forEach(p -> p.toFile().delete());
-            }
-        } catch (IOException e) {
-            log.debug("清理临时文件失败: {}", e.getMessage());
-        }
+    public TaskDelegationService getDelegationService() {
+        return delegationService;
     }
 }

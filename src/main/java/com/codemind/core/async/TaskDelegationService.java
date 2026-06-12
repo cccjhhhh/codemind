@@ -1,0 +1,88 @@
+package com.codemind.core.async;
+
+import com.codemind.core.AgentLoop;
+import com.codemind.core.AgentResult;
+import com.codemind.api.session.SessionContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.nio.file.Path;
+import java.util.UUID;
+import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Task 委派服务 —— 使用独立线程池执行子 Agent 任务。
+ *
+ * 替代原有 TaskTool 直接同步创建子 Agent 的方式，
+ * 使用 TASK_DELEGATE 线程池统一管理子任务执行。
+ */
+public class TaskDelegationService {
+
+    private static final Logger log = LoggerFactory.getLogger(TaskDelegationService.class);
+
+    private final ThreadPoolExecutor executor;
+    private final AgentLoop parentLoop;
+    private final Path workingDirectory;
+
+    public TaskDelegationService(AgentLoop parentLoop, Path workingDirectory) {
+        this.executor = ThreadPoolConfig.TASK_DELEGATE;
+        this.parentLoop = parentLoop;
+        this.workingDirectory = workingDirectory;
+    }
+
+    /**
+     * 委派子任务，在线程池中异步执行。
+     *
+     * @param instruction 子任务指令
+     * @return Future，调用方通过 get(timeout) 控制超时
+     */
+    public Future<AgentResult> delegate(String instruction) {
+        return executor.submit(() -> {
+            AgentLoop subAgent = parentLoop.createSubAgent();
+            SessionContext subCtx = new SessionContext(UUID.randomUUID().toString());
+            subCtx.setWorkingDirectory(workingDirectory);
+            subCtx.setSystemMessage("你是 CodeMind 的子 Agent。执行以下任务，只返回最终结果。");
+            return subAgent.run(instruction, subCtx);
+        });
+    }
+
+    /**
+     * 获取当前线程池的运行时指标。
+     */
+    public ThreadPoolMetrics getMetrics() {
+        return new ThreadPoolMetrics(
+                executor.getPoolSize(),
+                executor.getActiveCount(),
+                executor.getQueue().size(),
+                executor.getCompletedTaskCount()
+        );
+    }
+
+    /**
+     * 优雅关闭线程池。
+     */
+    public void shutdown() {
+        log.info("关闭 TaskDelegationService 线程池...");
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * 线程池运行时指标（用于监控和诊断）。
+     */
+    public record ThreadPoolMetrics(
+            int poolSize,
+            int activeCount,
+            int queueSize,
+            long completedTaskCount
+    ) {}
+}

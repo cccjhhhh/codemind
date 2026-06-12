@@ -1,10 +1,8 @@
 package com.codemind.impl.llm;
 
-import com.codemind.api.llm.LLMClient;
-import com.codemind.api.llm.LLMResponse;
-import com.codemind.api.llm.Message;
-import com.codemind.api.llm.ToolDefinition;
+import com.codemind.api.llm.*;
 import com.codemind.api.safety.RateLimiter;
+import com.codemind.common.exception.LLMException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -130,7 +128,7 @@ public class ResilientLLMClient implements LLMClient {
                 rateLimiter.acquire();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                throw new RuntimeException("Rate limiter interrupted", e);
+                throw new LLMException("Rate limiter interrupted", e);
             }
         }
     }
@@ -152,7 +150,7 @@ public class ResilientLLMClient implements LLMClient {
             } catch (Exception e) {
                 // 判断是否可重试
                 if (!shouldRetry(e) || attempt > maxRetries) {
-                    throw new RuntimeException("LLM API 调用失败，已达最大重试次数", e);
+                    throw new LLMException("LLM API 调用失败，已达最大重试次数", e);
                 }
 
                 log.warn("LLM API 调用失败，准备重试 (attempt {}/{}): {}",
@@ -167,7 +165,7 @@ public class ResilientLLMClient implements LLMClient {
                     TimeUnit.MILLISECONDS.sleep(sleepMs);
                 } catch (InterruptedException ie) {
                     Thread.currentThread().interrupt();
-                    throw new RuntimeException("Retry interrupted", ie);
+                    throw new LLMException("Retry interrupted", ie);
                 }
 
                 backoffMs = Math.min(backoffMs * 2, maxBackoffMs);

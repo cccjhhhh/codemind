@@ -106,7 +106,7 @@ public class SettingsLoader {
         }
         if (source.getContext() != null) {
             if (source.getContext().getTruncation() != null) {
-                if (source.getContext().getTruncation().getSpillThresholdChars() != 2000)
+                if (source.getContext().getTruncation().getSpillThresholdChars() != 8000)
                     target.getContext().getTruncation().setSpillThresholdChars(source.getContext().getTruncation().getSpillThresholdChars());
                 if (source.getContext().getTruncation().getSpillDir() != null)
                     target.getContext().getTruncation().setSpillDir(source.getContext().getTruncation().getSpillDir());
@@ -114,9 +114,7 @@ public class SettingsLoader {
             if (source.getContext().getWindow() != null) {
                 if (source.getContext().getWindow().getTargetRatio() != 0.8)
                     target.getContext().getWindow().setTargetRatio(source.getContext().getWindow().getTargetRatio());
-                if (source.getContext().getWindow().getStaleRounds() != 5)
-                    target.getContext().getWindow().setStaleRounds(source.getContext().getWindow().getStaleRounds());
-            }
+}
             if (source.getContext().getCompaction() != null) {
                 if (source.getContext().getCompaction().getMaxMessagesBeforeSnip() != 50)
                     target.getContext().getCompaction().setMaxMessagesBeforeSnip(source.getContext().getCompaction().getMaxMessagesBeforeSnip());

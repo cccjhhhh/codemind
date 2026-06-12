@@ -42,3 +42,10 @@ docs
 test/
 
 .codemind
+
+# Test code (local only, do not commit)
+**/src/test/
+codemind-test/
+target/surefire-reports/
+target/jacoco*
+*.test-result

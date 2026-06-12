@@ -6,18 +6,20 @@ import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolHook;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.api.skill.SkillDefinition;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class ToolRegistryImpl implements ToolRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ToolRegistryImpl.class);
-    private final Map<String, Tool> tools = new HashMap<>();
-    private final Map<String, String> deprecatedToCanonical = new HashMap<>();
-    private final List<ToolHook> hooks = new ArrayList<>();
+    private final Map<String, Tool> tools = new ConcurrentHashMap<>();
+    private final Map<String, String> deprecatedToCanonical = new ConcurrentHashMap<>();
+    private final List<ToolHook> hooks = new CopyOnWriteArrayList<>();
     private final PermissionGate permissionGate;
 
     public ToolRegistryImpl(PermissionGate permissionGate) {

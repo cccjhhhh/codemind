@@ -2,8 +2,8 @@ package com.codemind.impl.cli;
 
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.ToolRegistry;
-import com.codemind.impl.skill.SkillDefinition;
-import com.codemind.impl.skill.SkillEntry;
+import com.codemind.api.skill.SkillDefinition;
+import com.codemind.api.skill.SkillEntry;
 import com.codemind.impl.skill.SkillRegistry;
 
 import java.util.List;

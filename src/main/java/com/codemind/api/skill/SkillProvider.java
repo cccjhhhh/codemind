@@ -1,6 +1,6 @@
 package com.codemind.api.skill;
 
-import com.codemind.impl.skill.SkillEntry;
+import com.codemind.api.skill.SkillEntry;
 import java.util.List;
 
 public interface SkillProvider {

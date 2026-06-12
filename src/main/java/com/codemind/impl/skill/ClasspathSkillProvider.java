@@ -1,5 +1,7 @@
 package com.codemind.impl.skill;
 
+import com.codemind.api.skill.SkillDefinition;
+import com.codemind.api.skill.SkillEntry;
 import com.codemind.api.skill.SkillProvider;
 import java.util.List;
 

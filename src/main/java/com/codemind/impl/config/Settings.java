@@ -45,13 +45,10 @@ public class Settings {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Rule {
         private String tool;
-        private String condition;
         private String level;
 
         public String getTool() { return tool; }
         public void setTool(String tool) { this.tool = tool; }
-        public String getCondition() { return condition; }
-        public void setCondition(String condition) { this.condition = condition; }
         public String getLevel() { return level; }
         public void setLevel(String level) { this.level = level; }
     }
@@ -84,12 +81,9 @@ public class Settings {
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Window {
         private double targetRatio = 0.8;
-        private int staleRounds = 5;
 
         public double getTargetRatio() { return targetRatio; }
         public void setTargetRatio(double targetRatio) { this.targetRatio = targetRatio; }
-        public int getStaleRounds() { return staleRounds; }
-        public void setStaleRounds(int staleRounds) { this.staleRounds = staleRounds; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

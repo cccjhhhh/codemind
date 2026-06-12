@@ -1,6 +1,6 @@
 package com.codemind.dto.skill;
 
-import com.codemind.impl.skill.SkillDefinition;
+import com.codemind.api.skill.SkillDefinition;
 
 public class SkillRouteDto {
 

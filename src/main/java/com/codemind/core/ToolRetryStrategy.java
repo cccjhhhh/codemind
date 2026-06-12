@@ -23,19 +23,20 @@ public class ToolRetryStrategy {
 
     private static final Random RANDOM = new Random();
 
-    /** 每类工具的最大重试次数 */
-    private static final Map<String, Integer> RETRY_LIMITS = new ConcurrentHashMap<>();
-
-    static {
-        RETRY_LIMITS.put("Read", 2);
-        RETRY_LIMITS.put("Grep", 2);
-        RETRY_LIMITS.put("Glob", 2);
-        RETRY_LIMITS.put("WebFetch", 2);
-        RETRY_LIMITS.put("Bash", 1);
-        RETRY_LIMITS.put("Write", 1);
-        RETRY_LIMITS.put("Edit", 1);
-        // 其他工具默认 0 次重试
-    }
+    /**
+     * 每类工具的最大重试次数。
+     * 设计上允许运行时通过 {@link #setRetryLimit(String, int)} 动态修改，
+     * 因此使用 ConcurrentHashMap（而非不可变 Map）以支持并发配置更新。
+     */
+    private static final Map<String, Integer> RETRY_LIMITS = new ConcurrentHashMap<>(Map.of(
+        "Read", 2,
+        "Grep", 2,
+        "Glob", 2,
+        "WebFetch", 2,
+        "Bash", 1,
+        "Write", 1,
+        "Edit", 1
+    ));
 
     /** 初始退避（毫秒） */
     private static final long INITIAL_BACKOFF_MS = 2000;

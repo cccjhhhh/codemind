@@ -1,11 +1,11 @@
 package com.codemind.impl.mcp;
 
 import com.codemind.api.mcp.McpClient;
-import com.codemind.api.mcp.McpConnectionException;
-import com.codemind.api.mcp.McpOperationException;
 import com.codemind.api.mcp.McpServerConfig;
 import com.codemind.api.mcp.McpToolDefinition;
 import com.codemind.api.tool.ToolResult;
+import com.codemind.common.exception.McpConnectionException;
+import com.codemind.common.exception.McpOperationException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpSyncClient;
@@ -33,7 +33,7 @@ public class McpClientImpl implements McpClient {
     }
     
     @Override
-    public void connect(McpServerConfig config) throws McpConnectionException {
+    public void connect(McpServerConfig config) {
         try {
             this.currentConfig = config;
             this.serverName = config.getCommand() != null ? config.getCommand() : config.getUrl();
@@ -60,7 +60,7 @@ public class McpClientImpl implements McpClient {
     }
     
     @Override
-    public List<McpToolDefinition> listTools() throws McpOperationException {
+    public List<McpToolDefinition> listTools() {
         if (!isConnected()) {
             throw new McpOperationException(null, "Not connected to MCP server");
         }
@@ -98,8 +98,7 @@ public class McpClientImpl implements McpClient {
     }
     
     @Override
-    public ToolResult executeTool(String toolName, Map<String, Object> params) 
-        throws McpOperationException {
+    public ToolResult executeTool(String toolName, Map<String, Object> params) {
         if (!isConnected()) {
             throw new McpOperationException(toolName, "Not connected to MCP server");
         }
