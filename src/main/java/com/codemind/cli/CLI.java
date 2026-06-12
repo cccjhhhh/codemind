@@ -19,6 +19,8 @@ import com.codemind.impl.llm.ModelManager;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+import com.codemind.impl.mcp.McpConfigLoader;
+import com.codemind.impl.mcp.McpCommandHandler;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -273,6 +275,10 @@ public class CLI implements Runnable {
                 
             case "/help":
                 printHelp();
+                return null;
+                
+            case "/mcp":
+                handleMcpCommand(parts);
                 return null;
                 
             default:
@@ -605,5 +611,19 @@ public class CLI implements Runnable {
         this.contextRef.set(loadedContext);
         System.out.println(DIM + "已替换当前会话上下文" + RESET);
         System.out.println();
+    }
+    
+    /**
+     * 处理 /mcp 命令
+     */
+    private void handleMcpCommand(String[] parts) {
+        try {
+            Path mcpConfigPath = Path.of(System.getProperty("user.home"), ".codemind", "mcp.json");
+            McpConfigLoader configLoader = new McpConfigLoader();
+            McpCommandHandler handler = new McpCommandHandler(configLoader, mcpConfigPath);
+            handler.handle(parts);
+        } catch (Exception e) {
+            System.out.println(RED + "MCP command failed: " + e.getMessage() + RESET);
+        }
     }
 }

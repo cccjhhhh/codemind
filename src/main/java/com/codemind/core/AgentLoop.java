@@ -11,6 +11,7 @@ import com.codemind.impl.cli.SystemPromptBuilder;
 import com.codemind.impl.safety.SafetyChecker;
 import com.codemind.impl.session.CompactionPipeline;
 import com.codemind.impl.skill.routing.SkillRouter;
+import com.codemind.impl.mcp.McpToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,6 +42,7 @@ public class AgentLoop {
     private final TokenBudget tokenBudget;
     private final StopHook stopHook;
     private final ToolRetryStrategy toolRetryStrategy;
+    private final McpToolRegistry mcpToolRegistry;
 
     private int iterationCount = 0;
     private RecoveryManager recoveryManager = new RecoveryManager();
@@ -52,7 +54,7 @@ public class AgentLoop {
                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder) {
         this(llmClient, toolRegistry, permissionGate, outputFormatter,
              maxIterations, maxExecutionTimeSeconds, skillRouter, promptBuilder,
-             null, null);
+             null, null, null);
     }
 
     // 新 10-参数构造器（推荐）
@@ -60,7 +62,8 @@ public class AgentLoop {
                      PermissionGate permissionGate, OutputFormatter outputFormatter,
                      int maxIterations, int maxExecutionTimeSeconds,
                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder,
-                     CompactionPipeline compactionPipeline, TokenBudget tokenBudget) {
+                     CompactionPipeline compactionPipeline, TokenBudget tokenBudget,
+                     McpToolRegistry mcpToolRegistry) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.permissionGate = permissionGate;
@@ -71,6 +74,7 @@ public class AgentLoop {
         this.promptBuilder = promptBuilder;
         this.compactionPipeline = compactionPipeline;
         this.tokenBudget = tokenBudget;
+        this.mcpToolRegistry = mcpToolRegistry;
         this.stopHook = new StopHook();
         this.toolRetryStrategy = new ToolRetryStrategy();
     }
@@ -436,7 +440,12 @@ public class AgentLoop {
         for (ToolCall tc : batch) {
             futures.add(executor.submit(() -> {
                 outputHandler.accept(outputFormatter.formatToolCallStart(tc.getName(), tc.getArguments()));
-                ToolResult result = toolRegistry.execute(tc.getName(), tc.getArguments());
+                ToolResult result;
+                if (mcpToolRegistry != null && mcpToolRegistry.hasTool(tc.getName())) {
+                    result = mcpToolRegistry.executeTool(tc.getName(), tc.getArguments());
+                } else {
+                    result = toolRegistry.execute(tc.getName(), tc.getArguments());
+                }
                 outputHandler.accept(outputFormatter.formatToolCallEnd(tc.getName(), result));
                 return result;
             }));
@@ -469,7 +478,12 @@ public class AgentLoop {
             toolCall.getName(), toolCall.getArguments()));
         ToolResult result = toolRetryStrategy.executeWithRetry(
             toolCall.getName(),
-            () -> toolRegistry.execute(toolCall.getName(), toolCall.getArguments())
+            () -> {
+                if (mcpToolRegistry != null && mcpToolRegistry.hasTool(toolCall.getName())) {
+                    return mcpToolRegistry.executeTool(toolCall.getName(), toolCall.getArguments());
+                }
+                return toolRegistry.execute(toolCall.getName(), toolCall.getArguments());
+            }
         );
         outputHandler.accept(outputFormatter.formatToolCallEnd(toolCall.getName(), result));
         return result;
@@ -638,7 +652,7 @@ public class AgentLoop {
     public AgentLoop createSubAgent() {
         return new AgentLoop(
             this.llmClient, this.toolRegistry, this.permissionGate, this.outputFormatter,
-            15, 60, null, null, null, null
+            15, 60, null, null, null, null, null
         );
     }
 

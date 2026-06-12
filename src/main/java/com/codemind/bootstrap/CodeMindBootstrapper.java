@@ -31,6 +31,18 @@ import com.codemind.impl.tool.*;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+
+import com.codemind.api.mcp.McpClient;
+import com.codemind.api.mcp.McpClientFactory;
+import com.codemind.api.mcp.McpServerConfig;
+import com.codemind.api.mcp.McpToolAdapter;
+import com.codemind.api.mcp.McpToolDefinition;
+import com.codemind.impl.mcp.McpClientFactoryImpl;
+import com.codemind.impl.mcp.McpConfigLoader;
+import com.codemind.impl.mcp.McpToolAdapterImpl;
+import com.codemind.impl.mcp.McpToolRegistry;
 
 public class CodeMindBootstrapper {
 
@@ -151,11 +163,48 @@ public class CodeMindBootstrapper {
         if (maxIterations != 50) effectiveMaxIterations = maxIterations;
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
 
+        // MCP 初始化
+        McpToolRegistry mcpToolRegistry = new McpToolRegistry();
+        try {
+            Path mcpConfigPath = Path.of(System.getProperty("user.home"), ".codemind", "mcp.json");
+            McpConfigLoader configLoader = new McpConfigLoader();
+            Map<String, McpServerConfig> mcpServers = configLoader.load(mcpConfigPath);
+
+            // 连接已启用的 MCP 服务器并注册工具
+            McpClientFactory clientFactory = new McpClientFactoryImpl();
+            McpToolAdapter toolAdapter = new McpToolAdapterImpl();
+
+            for (Map.Entry<String, McpServerConfig> entry : mcpServers.entrySet()) {
+                String serverName = entry.getKey();
+                McpServerConfig config = entry.getValue();
+
+                if (config.isEnabled()) {
+                    try {
+                        McpClient client = clientFactory.createClient(config);
+                        client.connect(config);
+
+                        List<McpToolDefinition> tools = client.listTools();
+                        List<com.codemind.api.tool.Tool> adaptedTools = new ArrayList<>();
+                        for (McpToolDefinition tool : tools) {
+                            adaptedTools.add(toolAdapter.adapt(tool, client));
+                        }
+
+                        mcpToolRegistry.registerServerTools(serverName, adaptedTools);
+                        System.out.println("Connected to MCP server: " + serverName);
+                    } catch (Exception e) {
+                        System.out.println("Failed to connect to MCP server " + serverName + ": " + e.getMessage());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println("Failed to load MCP config: " + e.getMessage());
+        }
+
         // 13. Agent 循环
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
             effectiveMaxIterations, effectiveTimeout, skillRouter, promptBuilder,
-            compactionPipeline, tokenBudget
+            compactionPipeline, tokenBudget, mcpToolRegistry
         );
 
         // 注册依赖 AgentLoop 的工具
