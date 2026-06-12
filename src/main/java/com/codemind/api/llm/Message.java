@@ -69,4 +69,20 @@ public class Message {
     public String getToolCallId() { return toolCallId; }
     public List<ToolCall> getToolCalls() { return toolCalls; }
     public boolean hasToolCalls() { return toolCalls != null && !toolCalls.isEmpty(); }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[").append(role).append("] ");
+        if (content != null) {
+            sb.append(content);
+        }
+        if (toolCallId != null) {
+            sb.append(" (toolCallId: ").append(toolCallId).append(")");
+        }
+        if (toolCalls != null && !toolCalls.isEmpty()) {
+            sb.append(" [toolCalls: ").append(toolCalls.size()).append("]");
+        }
+        return sb.toString();
+    }
 }
