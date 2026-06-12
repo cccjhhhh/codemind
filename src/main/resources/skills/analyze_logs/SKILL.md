@@ -1,11 +1,30 @@
 ---
 name: analyze_logs
-description: >
-  对日志文件进行深度分析，识别异常模式、统计错误分布、定位根因并提供可操作建议。
-  当用户要求分析日志、排查问题、查看错误、或诊断系统故障时自动触发。
-  Triggers: 分析日志, analyze logs, 查看日志, 日志分析, parse logs, 检查日志, 排查问题,
-  日志排查, 日志检查, 错误日志, error log, 看日志, 日志诊断, 异常分析, troubleshoot logs,
-  check logs, view logs, 日志聚合, 日志统计, 日志报告, tail log, 日志追踪, 故障分析
+description: 对日志文件进行深度分析，识别异常模式、统计错误分布、定位根因并提供可操作改进建议。适用于排查线上问题、分析错误堆栈、诊断系统故障等场景。
+triggerKeywords:
+  - 分析日志
+  - analyze logs
+  - 查看日志
+  - 日志分析
+  - parse logs
+  - 检查日志
+  - 排查问题
+  - 日志排查
+  - 日志检查
+  - 错误日志
+  - error log
+  - 看日志
+  - 日志诊断
+  - 异常分析
+  - troubleshoot logs
+  - check logs
+  - view logs
+  - 日志聚合
+  - 日志统计
+  - 日志报告
+  - tail log
+  - 日志追踪
+  - 故障分析
 disabledKeywords:
   - 跳过日志
   - skip logs

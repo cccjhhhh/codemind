@@ -46,8 +46,13 @@ public class SystemPromptBuilder {
         if (!allSkills.isEmpty()) {
             sb.append("## Available Skills\n\n");
             for (SkillEntry entry : allSkills) {
+                String desc = entry.metadata().description();
+                // Truncate long descriptions to keep system prompt lean
+                if (desc.length() > 150) {
+                    desc = desc.substring(0, 147) + "...";
+                }
                 sb.append("- **").append(entry.name()).append("**");
-                sb.append(": ").append(entry.metadata().description()).append("\n");
+                sb.append(": ").append(desc).append("\n");
             }
             sb.append("\nSkills activate automatically when the system detects a matching request. ");
             sb.append("You can also call LoadSkill to manually load a skill.\n\n");
