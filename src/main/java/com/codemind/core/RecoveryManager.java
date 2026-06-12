@@ -207,6 +207,10 @@ public class RecoveryManager {
                 String cmd = (String) args.get("command");
                 yield toolName + ":" + (cmd != null ? cmd.substring(0, Math.min(cmd.length(), 60)) : "?");
             }
+            case "Task" -> {
+                String instruction = (String) args.get("instruction");
+                yield toolName + ":" + (instruction != null ? instruction.substring(0, Math.min(instruction.length(), 60)) : "?");
+            }
             default -> toolName;
         };
     }
@@ -243,6 +247,13 @@ public class RecoveryManager {
     public void onSuccessfulTurn() {
         reset529Count();
         // 不清空 recentToolCalls — 让循环检测持续跨轮工作
+    }
+
+    /**
+     * 清空循环检测缓冲区（用于 LOOP_DETECTED 后避免立即再次触发）。
+     */
+    public void clearRecentToolCalls() {
+        recentToolCalls.clear();
     }
 
     /**

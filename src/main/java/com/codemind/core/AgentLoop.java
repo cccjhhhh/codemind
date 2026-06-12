@@ -238,6 +238,7 @@ public class AgentLoop {
                     outputHandler.accept(outputFormatter.formatWarning("检测到重复操作模式，触发上下文压缩"));
                     try {
                         // 清空 recentToolCalls 避免立即再次触发
+                        recoveryManager.clearRecentToolCalls();
                         String summary = compactHistory(context, startTime);
                         if (summary != null && !summary.isEmpty()) {
                             context.clearHistory();
