@@ -48,41 +48,4 @@ public class TaskDelegationService {
         });
     }
 
-    /**
-     * 获取当前线程池的运行时指标。
-     */
-    public ThreadPoolMetrics getMetrics() {
-        return new ThreadPoolMetrics(
-                executor.getPoolSize(),
-                executor.getActiveCount(),
-                executor.getQueue().size(),
-                executor.getCompletedTaskCount()
-        );
-    }
-
-    /**
-     * 优雅关闭线程池。
-     */
-    public void shutdown() {
-        log.info("关闭 TaskDelegationService 线程池...");
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * 线程池运行时指标（用于监控和诊断）。
-     */
-    public record ThreadPoolMetrics(
-            int poolSize,
-            int activeCount,
-            int queueSize,
-            long completedTaskCount
-    ) {}
 }

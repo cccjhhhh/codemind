@@ -107,21 +107,4 @@ public class AnsiStyles {
      */
     public static final String CARRIAGE_RETURN = "\r";
     
-    // ========== 工具方法 ==========
-    
-    /**
-     * 检查颜色是否启用
-     */
-    public static boolean isColorEnabled() {
-        return COLOR_ENABLED;
-    }
-    
-    /**
-     * 截断字符串到指定长度
-     */
-    public static String truncate(String str, int maxLength) {
-        if (str == null) return "";
-        if (str.length() <= maxLength) return str;
-        return str.substring(0, maxLength - 3) + "...";
-    }
 }

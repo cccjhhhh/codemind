@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * MCP 工具注册表
- * 
+ *
  * 管理所有 MCP 工具的注册和查询。
  * 与原生 ToolRegistry 独立。
  */

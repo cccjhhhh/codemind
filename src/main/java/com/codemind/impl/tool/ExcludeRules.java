@@ -107,24 +107,6 @@ public class ExcludeRules {
     }
 
     /**
-     * 添加额外的排除规则
-     *
-     * @param pattern 正则表达式模式
-     */
-    public void addExcludePattern(String pattern) {
-        excludePathPatterns.add(Pattern.compile(pattern));
-    }
-
-    /**
-     * 添加额外的排除目录
-     *
-     * @param dirName 目录名称（不含路径）
-     */
-    public void addExcludeDir(String dirName) {
-        excludeDirNames.add(dirName);
-    }
-
-    /**
      * 从 .gitignore 文件加载排除规则
      *
      * @param projectDir 项目根目录
@@ -229,15 +211,6 @@ public class ExcludeRules {
     }
 
     /**
-     * 获取排除的目录名称集合
-     *
-     * @return 不可修改的目录名称集合
-     */
-    public Set<String> getExcludeDirNames() {
-        return java.util.Collections.unmodifiableSet(excludeDirNames);
-    }
-
-    /**
      * 获取默认排除的目录名称集合（静态方法）
      *
      * @return 不可修改的默认排除目录集合
@@ -246,13 +219,4 @@ public class ExcludeRules {
         return DEFAULT_EXCLUDE_DIRS;
     }
 
-    /**
-     * 获取排除规则统计信息
-     *
-     * @return 格式化的统计字符串
-     */
-    public String getStats() {
-        return String.format("ExcludeRules: %d dir names, %d path patterns, %d file patterns",
-            excludeDirNames.size(), excludePathPatterns.size(), excludeFilePatterns.size());
-    }
 }

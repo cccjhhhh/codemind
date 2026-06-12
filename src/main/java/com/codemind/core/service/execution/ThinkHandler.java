@@ -83,7 +83,7 @@ public class ThinkHandler implements StateHandler {
         // 2. 获取原始消息并执行压缩管线（单入口）
         List<Message> messages = ctx.getHistory();
         if (compactionPipeline != null) {
-            messages = compactionPipeline.run(messages, null);
+            messages = compactionPipeline.run(messages);
         }
         if (ctx.getSystemMessage() != null) {
             messages = new ArrayList<>(messages);

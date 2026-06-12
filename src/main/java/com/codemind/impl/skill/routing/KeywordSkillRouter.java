@@ -56,20 +56,4 @@ public class KeywordSkillRouter {
         return false;
     }
     
-    public static List<String> getNegativeIndicators() {
-        return NEGATIVE_INDICATORS;
-    }
-    
-    public List<SkillDefinition> getAllSkills() {
-        return skills;
-    }
-    
-    public String getAllSkillSummaries() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Available Skills:\n");
-        for (SkillDefinition skill : skills) {
-            sb.append("- ").append(skill.getMetadata().getSummary()).append("\n");
-        }
-        return sb.toString();
-    }
 }

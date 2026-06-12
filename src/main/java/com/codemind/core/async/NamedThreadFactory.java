@@ -40,7 +40,4 @@ public class NamedThreadFactory implements ThreadFactory {
         return t;
     }
 
-    public String getNamePrefix() {
-        return namePrefix;
-    }
 }

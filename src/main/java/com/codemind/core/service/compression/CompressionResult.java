@@ -15,8 +15,4 @@ public record CompressionResult(
         boolean didSummarize,
         int originalSize,
         int compressedSize
-) {
-    public boolean wasEffective() {
-        return compressedSize < originalSize;
-    }
-}
+) {}

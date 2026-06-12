@@ -95,20 +95,6 @@ public class SessionContext {
     }
     
     /**
-     * 设置最大历史消息数量
-     */
-    public void setMaxHistorySize(int maxHistorySize) {
-        this.maxHistorySize = maxHistorySize;
-    }
-    
-    /**
-     * 获取最大历史消息数量
-     */
-    public int getMaxHistorySize() {
-        return maxHistorySize;
-    }
-    
-    /**
      * 获取对话历史
      */
     public List<Message> getHistory() {
@@ -146,13 +132,6 @@ public class SessionContext {
     }
     
     /**
-     * 清除系统消息
-     */
-    public void clearSystemMessage() {
-        this.systemMessage = null;
-    }
-    
-    /**
      * 设置上下文窗口管理器
      */
     public void setContextWindowManager(ContextWindowManager manager) {
@@ -164,18 +143,6 @@ public class SessionContext {
      */
     public ContextWindowManager getContextWindowManager() {
         return contextWindowManager;
-    }
-    
-    /**
-     * 根据模型 ID 更新上下文窗口管理器
-     * 
-     * 如果模型发生变化（如切换模型），调用此方法更新上下文管理器。
-     * 注意：需要传入已配置好的 ContextWindowManager。
-     * 
-     * @param manager 已配置的上下文窗口管理器
-     */
-    public void updateContextWindowManager(ContextWindowManager manager) {
-        this.contextWindowManager = manager;
     }
     
     /**
@@ -201,25 +168,6 @@ public class SessionContext {
             return contextWindowManager.manageWindow(allMessages, systemMessage);
         }
         return allMessages;
-    }
-    
-    /**
-     * 获取当前的 token 数量估算
-     * 
-     * 需要设置 TokenCountService 才能使用。
-     */
-    public int getTokenCount() {
-        List<Message> allMessages = new ArrayList<>();
-        if (systemMessage != null) {
-            allMessages.add(systemMessage);
-        }
-        allMessages.addAll(history);
-        
-        // 使用上下文窗口管理器进行估算（如果有）
-        if (contextWindowManager != null) {
-            return contextWindowManager.getCurrentTokenCount(allMessages);
-        }
-        return allMessages.size();  // 简单回退：消息数量
     }
     
     /**

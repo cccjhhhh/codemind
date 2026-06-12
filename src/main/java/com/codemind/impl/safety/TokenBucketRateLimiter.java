@@ -108,102 +108,23 @@ public class TokenBucketRateLimiter implements RateLimiter {
             }
         }
     }
-    
-    @Override
-    public boolean tryAcquire() {
-        return tryAcquire(1);
-    }
-    
+
     @Override
     public boolean tryAcquire(long permits) {
         if (permits <= 0) {
             throw new IllegalArgumentException("permits must be positive");
         }
-        
+
         lock.lock();
         try {
             refillTokens();
-            
+
             if (currentTokens >= permits) {
                 currentTokens -= permits;
                 return true;
             }
             
             return false;
-        } finally {
-            lock.unlock();
-        }
-    }
-    
-    /**
-     * 尝试在指定时间内获取指定数量的许可
-     * 
-     * @param permits 需要的许可数量
-     * @param timeout 最长等待时间（毫秒）
-     * @return true 如果获取成功，false 如果超时
-     */
-    public boolean tryAcquire(long permits, long timeout) throws InterruptedException {
-        if (permits <= 0) {
-            throw new IllegalArgumentException("permits must be positive");
-        }
-        
-        long startTime = System.nanoTime();
-        long timeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeout);
-        
-        while (true) {
-            lock.lockInterruptibly();
-            try {
-                refillTokens();
-                
-                if (currentTokens >= permits) {
-                    currentTokens -= permits;
-                    return true;
-                }
-                
-                // 检查是否超时
-                long elapsed = System.nanoTime() - startTime;
-                if (elapsed >= timeoutNanos) {
-                    return false;
-                }
-                
-                // 计算需要等待的时间
-                long neededTokens = permits - currentTokens;
-                long waitNanos = (long) (neededTokens * 1_000_000_000.0 / permitsPerSecond);
-                
-                // 确保不超过剩余超时时间
-                long remainingNanos = timeoutNanos - elapsed;
-                waitNanos = Math.min(waitNanos, remainingNanos);
-                
-                // 释放锁并等待
-                lock.unlock();
-                TimeUnit.NANOSECONDS.sleep(waitNanos);
-                lock.lockInterruptibly();
-                
-            } finally {
-                if (lock.isHeldByCurrentThread()) {
-                    lock.unlock();
-                }
-            }
-        }
-    }
-    
-    @Override
-    public long availablePermits() {
-        lock.lock();
-        try {
-            refillTokens();
-            return currentTokens;
-        } finally {
-            lock.unlock();
-        }
-    }
-    
-    @Override
-    public void reset() {
-        lock.lock();
-        try {
-            this.currentTokens = maxBurst;
-            this.lastRefillTime = System.nanoTime();
         } finally {
             lock.unlock();
         }
@@ -217,26 +138,11 @@ public class TokenBucketRateLimiter implements RateLimiter {
     private void refillTokens() {
         long now = System.nanoTime();
         long elapsed = now - lastRefillTime;
-        
+
         if (elapsed > 0) {
-            // 计算应该补充的令牌数
             double newTokens = elapsed * permitsPerSecond / 1_000_000_000.0;
             currentTokens = Math.min(maxBurst, (long) (currentTokens + newTokens));
             lastRefillTime = now;
         }
-    }
-    
-    /**
-     * 获取速率配置
-     */
-    public long getPermitsPerSecond() {
-        return permitsPerSecond;
-    }
-    
-    /**
-     * 获取最大突发量
-     */
-    public long getMaxBurst() {
-        return maxBurst;
     }
 }

@@ -50,13 +50,12 @@ public class CompactionPipeline {
         this.saveTranscripts = saveTranscripts;
     }
 
-    public int getConsecutiveFailures() { return consecutiveFailures; }
     public void resetFailures() { consecutiveFailures = 0; }
 
     /**
      * 运行完整管线: L1 → L2 → L3 (委托给 ContextCompressionOrchestrator)
      */
-    public List<Message> run(List<Message> messages, Runnable l4Compactor) {
+    public List<Message> run(List<Message> messages) {
         var result = orchestrator.run(messages, null);
 
         if (!result.didCompact()) {
@@ -68,19 +67,4 @@ public class CompactionPipeline {
         return result.compressedMessages();
     }
 
-    /**
-     * 保存对话转录（用于调试和审计）。
-     */
-    public void saveTranscript(List<Message> messages) {
-        if (!saveTranscripts || messages.isEmpty()) return;
-        try {
-            Path transcriptDir = Path.of(".codemind", "transcripts");
-            Files.createDirectories(transcriptDir);
-            String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-            Path transcriptPath = transcriptDir.resolve(ts + ".jsonl");
-            Files.writeString(transcriptPath, messages.toString());
-        } catch (IOException e) {
-            log.warn("保存转录失败: {}", e.getMessage());
-        }
-    }
 }

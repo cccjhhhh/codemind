@@ -15,8 +15,7 @@ import java.util.*;
  * 执行流程：
  * 1. 一次扫描计算 Read 结果索引（protectedIndices）
  * 2. 按 order() 依次执行 L1 → L2 → L3
- * 3. 若 Token 预算仍不足，执行 L4 全量摘要
- * 4. 返回 CompressionResult
+ * 3. 返回 CompressionResult
  */
 public class ContextCompressionOrchestrator {
 
@@ -58,28 +57,6 @@ public class ContextCompressionOrchestrator {
         }
 
         return new CompressionResult(result, didCompact, false, originalSize, result.size());
-    }
-
-    /**
-     * 执行 L4 全量摘要（按需调用）。
-     *
-     * @param messages    当前消息列表
-     * @param l4Compactor L4 摘要实施者
-     * @param context     SessionContext，用于获取已读文件缓存等额外信息
-     * @return 压缩结果
-     */
-    public CompressionResult runL4(List<Message> messages,
-                                    L4SummaryService l4Compactor,
-                                    Object context) {
-        int originalSize = messages.size();
-
-        List<Message> result = l4Compactor.summarize(messages, context);
-
-        boolean didSummarize = result.size() < messages.size()
-                || !result.equals(messages);
-
-        return new CompressionResult(result, false, didSummarize,
-                originalSize, result.size());
     }
 
     /**

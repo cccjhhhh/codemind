@@ -79,10 +79,4 @@ public class TaskTool implements Tool {
         }
     }
 
-    /**
-     * 获取 TaskDelegationService，用于外部（如 Bootstrap）在关闭时优雅关闭线程池。
-     */
-    public TaskDelegationService getDelegationService() {
-        return delegationService;
-    }
 }

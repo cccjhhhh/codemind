@@ -31,31 +31,10 @@ public interface RateLimiter {
     long acquire(long permits) throws InterruptedException;
     
     /**
-     * 尝试获取许可（非阻塞）
-     * 
-     * @return true 如果获取成功，false 如果没有可用许可
-     */
-    boolean tryAcquire();
-    
-    /**
      * 尝试获取指定数量的许可（非阻塞）
-     * 
+     *
      * @param permits 需要的许可数量
      * @return true 如果获取成功，false 如果没有足够许可
      */
     boolean tryAcquire(long permits);
-    
-    /**
-     * 获取可用许可数量
-     * 
-     * @return 当前可用的许可数量
-     */
-    long availablePermits();
-    
-    /**
-     * 重置速率限制器
-     * 
-     * 清空所有已使用的许可，恢复到初始状态。
-     */
-    void reset();
 }

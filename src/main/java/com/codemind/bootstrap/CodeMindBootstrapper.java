@@ -39,6 +39,7 @@ import com.codemind.api.mcp.McpClientFactory;
 import com.codemind.api.mcp.McpServerConfig;
 import com.codemind.api.mcp.McpToolAdapter;
 import com.codemind.api.mcp.McpToolDefinition;
+import com.codemind.api.tool.Tool;
 import com.codemind.impl.mcp.McpClientFactoryImpl;
 import com.codemind.impl.mcp.McpConfigLoader;
 import com.codemind.impl.mcp.McpToolAdapterImpl;
@@ -160,7 +161,9 @@ public class CodeMindBootstrapper {
         if (maxIterations != 50) effectiveMaxIterations = maxIterations;
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
 
-        // MCP 初始化 — 适配为 Tool 接口后注册到主 ToolRegistry，获得完整 Hook 链
+        // MCP 初始化 — 使用 McpToolRegistry 管理 MCP 工具生命周期
+        // 同时注册到主 ToolRegistry 以获得完整 Hook 链
+        McpToolRegistry mcpToolRegistry = new McpToolRegistry();
         try {
             Path mcpConfigPath = Path.of(System.getProperty("user.home"), ".codemind", "mcp.json");
             McpConfigLoader configLoader = new McpConfigLoader();
@@ -178,10 +181,17 @@ public class CodeMindBootstrapper {
                         McpClient client = clientFactory.createClient(config);
                         client.connect(config);
 
-                        List<McpToolDefinition> tools = client.listTools();
-                        for (McpToolDefinition toolDef : tools) {
-                            com.codemind.api.tool.Tool adapted = toolAdapter.adapt(toolDef, client);
-                            toolRegistry.register(adapted); // 注册到主 ToolRegistry → 自动获得 Hook 链
+                        List<McpToolDefinition> toolDefs = client.listTools();
+                        List<Tool> adaptedTools = new ArrayList<>();
+                        for (McpToolDefinition toolDef : toolDefs) {
+                            Tool adapted = toolAdapter.adapt(toolDef, client);
+                            adaptedTools.add(adapted);
+                        }
+                        // 1. 注册到 McpToolRegistry（维护 server→tools 映射，支持按服务器管理）
+                        mcpToolRegistry.registerServerTools(serverName, adaptedTools);
+                        // 2. 注册到主 ToolRegistry（获得完整 Hook 链）
+                        for (Tool adapted : adaptedTools) {
+                            toolRegistry.register(adapted);
                         }
                         System.out.println("Connected to MCP server: " + serverName);
                     } catch (Exception e) {
@@ -205,8 +215,8 @@ public class CodeMindBootstrapper {
         session.setSystemMessage(promptBuilder.build(session));
 
         return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry,
-            permissionGate, skillRouter, promptBuilder, modelManager, settings,
-            effectiveMaxIterations, effectiveTimeout);
+            mcpToolRegistry, permissionGate, skillRouter, promptBuilder, modelManager,
+            settings, effectiveMaxIterations, effectiveTimeout);
     }
 
     public record BootstrapResult(
@@ -214,6 +224,7 @@ public class CodeMindBootstrapper {
         SessionContext session,
         SessionManager sessionManager,
         ToolRegistry toolRegistry,
+        McpToolRegistry mcpToolRegistry,
         PermissionGate permissionGate,
         SkillRouter skillRouter,
         SystemPromptBuilder promptBuilder,

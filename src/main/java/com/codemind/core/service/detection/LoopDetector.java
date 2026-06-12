@@ -93,17 +93,6 @@ public class LoopDetector {
         recentToolCalls.clear();
     }
 
-    /**
-     * 获取当前缓冲区大小。
-     */
-    public int getBufferSize() {
-        return recentToolCalls.size();
-    }
-
-    public boolean isInCooldown() {
-        return cooldownRemaining > 0;
-    }
-
     // ==================== 内部实现 ====================
 
     private LoopDetectionResult detect(String toolName) {

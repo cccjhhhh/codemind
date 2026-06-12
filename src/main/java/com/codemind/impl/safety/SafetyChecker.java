@@ -63,63 +63,6 @@ public class SafetyChecker {
     
     private static final String REDACTED = "[REDACTED]";
     
-    // ==================== 路径安全检查 ====================
-    
-    // 路径遍历模式
-    private static final Pattern PATH_TRAVERSAL = Pattern.compile("\\.\\.(/|\\\\)");
-    
-    // Windows 危险路径
-    private static final Set<String> WINDOWS_CRITICAL_PATHS = Set.of(
-        "c:\\windows",
-        "c:\\program files",
-        "c:\\program files (x86)",
-        "c:\\system32",
-        "c:\\boot",
-        "c:\\recovery"
-    );
-    
-    // Unix 危险路径
-    private static final Set<String> UNIX_CRITICAL_PATHS = Set.of(
-        "/etc",
-        "/usr/bin",
-        "/usr/sbin",
-        "/bin",
-        "/sbin",
-        "/boot",
-        "/sys",
-        "/proc",
-        "/dev",
-        "/root"
-    );
-    
-    // 危险命令模式
-    private static final Set<Pattern> CMD_DANGEROUS_PATTERNS = Set.of(
-        Pattern.compile("rm\\s+-rf"),
-        Pattern.compile("del\\s+/[fqs]"),
-        Pattern.compile("format\\s+"),
-        Pattern.compile("fdisk"),
-        Pattern.compile("mkfs"),
-        Pattern.compile("dd\\s+if="),
-        Pattern.compile(">\\s*/dev/"),
-        Pattern.compile(";\\s*rm\\s"),
-        Pattern.compile("&&\\s*rm\\s"),
-        Pattern.compile("\\|\\s*rm\\s"),
-        Pattern.compile("shutdown"),
-        Pattern.compile("reboot"),
-        Pattern.compile("init\\s+0"),
-        Pattern.compile("kill\\s+-9"),
-        Pattern.compile("curl\\s+.*\\|\\s*sh"),
-        Pattern.compile("wget\\s+.*\\|\\s*sh"),
-        Pattern.compile("python\\s+.*\\|\\s*sh"),
-        Pattern.compile("perl\\s+.*\\|\\s*sh"),
-        Pattern.compile("ruby\\s+.*\\|\\s*sh"),
-        Pattern.compile("php\\s+.*\\|\\s*sh"),
-        Pattern.compile("node\\s+.*\\|\\s*sh"),
-        Pattern.compile("^sudo\\s+"),
-        Pattern.compile("chmod\\s+777"),
-        Pattern.compile("chmod\\s+-R\\s+777")
-    );
-    
     // ==================== 输入安全检查 ====================
     
     /**
@@ -183,43 +126,5 @@ public class SafetyChecker {
         }
         
         return sanitized;
-    }
-    
-    // ==================== 路径安全检查 ====================
-    
-    /**
-     * 检查是否为路径遍历攻击
-     */
-    public boolean isPathTraversal(String input) {
-        if (input == null) {
-            return false;
-        }
-        return PATH_TRAVERSAL.matcher(input).find();
-    }
-    
-    /**
-     * 检查路径是否安全（不在系统关键目录）
-     */
-    public boolean isPathSafe(String pathStr) {
-        if (pathStr == null) {
-            return false;
-        }
-        
-        String lowerPath = pathStr.toLowerCase();
-        
-        if (System.getProperty("os.name").toLowerCase().contains("win")) {
-            return !WINDOWS_CRITICAL_PATHS.stream()
-                .anyMatch(lowerPath::startsWith);
-        } else {
-            return !UNIX_CRITICAL_PATHS.stream()
-                .anyMatch(lowerPath::startsWith);
-        }
-    }
-    
-    /**
-     * 检查路径是否安全
-     */
-    public boolean isPathSafe(Path path) {
-        return isPathSafe(path.toString());
     }
 }

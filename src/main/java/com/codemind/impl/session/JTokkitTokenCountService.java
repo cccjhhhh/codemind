@@ -245,38 +245,6 @@ public class JTokkitTokenCountService implements TokenCountService {
     }
     
     /**
-     * 获取当前使用的编码类型
-     */
-    public EncodingType getEncodingType() {
-        return encodingType;
-    }
-    
-    /**
-     * 获取模型名称
-     */
-    public String getModelName() {
-        return modelName;
-    }
-    
-    /**
-     * 编码文本（返回 token ID 列表）
-     */
-    public List<Integer> encode(String text) {
-        return encoding.encode(text).boxed();
-    }
-    
-    /**
-     * 解码 token ID 列表（返回原始文本）
-     */
-    public String decode(List<Integer> tokens) {
-        com.knuddels.jtokkit.api.IntArrayList intList = new com.knuddels.jtokkit.api.IntArrayList();
-        for (Integer token : tokens) {
-            intList.add(token);
-        }
-        return encoding.decode(intList);
-    }
-    
-    /**
      * 格式化参数 Map 为字符串
      */
     private String formatArguments(Map<String, Object> arguments) {

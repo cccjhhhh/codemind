@@ -34,11 +34,7 @@ public class OpenAIClient implements LLMClient {
     private final String model;
     private final int maxTokens;
     private final double temperature;
-    
-    public OpenAIClient(String apiKey) {
-        this(apiKey, "https://api.openai.com/v1", "gpt-4", 4096, 0.7);
-    }
-    
+
     public OpenAIClient(String apiKey, String baseUrl, String model, int maxTokens, double temperature) {
         this.apiKey = apiKey;
         this.baseUrl = baseUrl;

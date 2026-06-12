@@ -39,34 +39,4 @@ public class MetricsHook implements ToolHook {
         }
     }
 
-    public void logSessionMetrics(String sessionId, boolean success, int totalIterations,
-                                   long totalElapsedMs, int permissionDenials,
-                                   boolean l4Triggered, int recoveryCount, String model) {
-        try {
-            Path metricsDir = Path.of(".codemind", "metrics", "session");
-            Files.createDirectories(metricsDir);
-            Map<String, Object> record = new LinkedHashMap<>();
-            record.put("sessionId", sessionId);
-            record.put("success", success);
-            record.put("totalIterations", totalIterations);
-            record.put("totalElapsedMs", totalElapsedMs);
-            record.put("toolCalls", new LinkedHashMap<>(toolCallCounts));
-            record.put("toolFailures", toolFailureCounts.values().stream().mapToInt(Integer::intValue).sum());
-            record.put("permissionDenials", permissionDenials);
-            record.put("L4Triggered", l4Triggered);
-            record.put("recoveryCount", recoveryCount);
-            record.put("model", model);
-            record.put("timestamp", LocalDateTime.now().toString());
-
-            String json = JSON.writeValueAsString(record);
-            Files.writeString(metricsDir.resolve(sessionId + ".jsonl"), json + "\n",
-                StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-
-            // 重置计数器
-            toolCallCounts.clear();
-            toolFailureCounts.clear();
-        } catch (IOException e) {
-            log.warn("写入 session 指标失败: {}", e.getMessage());
-        }
-    }
 }

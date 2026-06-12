@@ -15,16 +15,4 @@ public class SkillRouter {
     public SkillRouteDto route(String userInput) {
         return keywordRouter.route(userInput);
     }
-
-    public List<SkillDefinition> getAllSkills() {
-        return keywordRouter.getAllSkills();
-    }
-
-    public String getAllSkillSummaries() {
-        return keywordRouter.getAllSkillSummaries();
-    }
-
-    public int size() {
-        return keywordRouter.getAllSkills().size();
-    }
 }
