@@ -14,7 +14,7 @@ import java.util.Map;
  * 1. max_tokens 三级升级（8K → 32K → 64K）
  * 2. 续写次数追踪（最多 3 次）
  * 3. 连续 529 错误计数及 fallback 模型切换
- * 4. 循环检测（环形缓冲区记录最近工具调用，检测重复模式）
+ * 4. 循环检测（连续重复检测 + 工具差异化阈值）
  * 5. reactive compact 标记（是否已尝试过压缩）
  *
  * 生命周期：每个 AgentLoop.run() 调用创建一个新实例。
@@ -37,10 +37,10 @@ public class RecoveryManager {
     private static final int FALLBACK_AFTER_CONSECUTIVE_529 = 3;
 
     /** 循环检测窗口大小 */
-    private static final int LOOP_BUFFER_SIZE = 12;
+    private static final int LOOP_BUFFER_SIZE = 15;
 
-    /** 循环判定阈值：窗口内相同工具+路径重复次数 */
-    private static final int LOOP_REPEAT_THRESHOLD = 4;
+    /** 默认循环判定阈值：连续相同调用次数 */
+    private static final int DEFAULT_LOOP_THRESHOLD = 3;
 
     // ========== 状态 ==========
 
@@ -177,7 +177,21 @@ public class RecoveryManager {
         if (recentToolCalls.size() > LOOP_BUFFER_SIZE) {
             recentToolCalls.removeFirst();
         }
-        return detectLoop();
+        return detectLoop(toolName);
+    }
+
+    /**
+     * 获取工具的循环检测阈值。
+     * 按工具类型差异化设置，参考 GitHub 最佳实践。
+     */
+    private int getThresholdForTool(String toolName) {
+        return switch (toolName) {
+            case "Read", "Write", "Edit" -> 3;      // 文件操作：3次
+            case "Glob", "Grep" -> 5;                // 搜索工具：5次（可能需要多次搜索）
+            case "Bash" -> 4;                         // 命令执行：4次
+            case "Task" -> 3;                         // 子任务委派：3次
+            default -> DEFAULT_LOOP_THRESHOLD;        // 其他：默认3次
+        };
     }
 
     /**
@@ -216,24 +230,30 @@ public class RecoveryManager {
     }
 
     /**
-     * 检测窗口内是否有工具调用循环。
-     * 如果同一工具+路径摘要出现 >= LOOP_REPEAT_THRESHOLD 次，判定为循环。
+     * 检测是否有连续的工具调用循环。
+     * 如果同一工具+参数摘要连续出现 >= 工具阈值，判定为循环。
      */
-    private ContinueReason detectLoop() {
-        if (recentToolCalls.size() < LOOP_BUFFER_SIZE) return null;
+    private ContinueReason detectLoop(String toolName) {
+        int threshold = getThresholdForTool(toolName);
+        
+        if (recentToolCalls.size() < threshold) return null;
 
-        // 统计每个工具摘要的出现次数
-        Map<String, Integer> counts = new HashMap<>();
+        // 检查最后 N 个调用是否完全相同（连续重复）
+        String lastKey = null;
+        int consecutiveCount = 0;
+        
         for (ToolCallRecord r : recentToolCalls) {
-            counts.merge(r.toolName + ":" + r.argsDigest, 1, Integer::sum);
-        }
-
-        // 寻找超过阈值的重复模式
-        for (var entry : counts.entrySet()) {
-            if (entry.getValue() >= LOOP_REPEAT_THRESHOLD) {
-                log.warn("检测到循环模式: '{}' 出现 {} 次（阈值 {}）",
-                    entry.getKey(), entry.getValue(), LOOP_REPEAT_THRESHOLD);
-                return ContinueReason.LOOP_DETECTED;
+            String currentKey = r.toolName + ":" + r.argsDigest;
+            if (currentKey.equals(lastKey)) {
+                consecutiveCount++;
+                if (consecutiveCount >= threshold) {
+                    log.warn("检测到连续循环模式: '{}' 连续出现 {} 次（阈值 {}）",
+                        currentKey, consecutiveCount + 1, threshold);
+                    return ContinueReason.LOOP_DETECTED;
+                }
+            } else {
+                lastKey = currentKey;
+                consecutiveCount = 1;
             }
         }
         return null;
