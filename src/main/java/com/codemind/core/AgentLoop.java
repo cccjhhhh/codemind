@@ -170,11 +170,17 @@ public class AgentLoop {
                     // LLM 全量摘要（L4）
                     try {
                         String summary = compactHistory(context, startTime);
-                        if (summary != null && !summary.isEmpty()) {
+                        // 验证摘要质量
+                        if (summary != null && !summary.isEmpty() 
+                            && !summary.contains("object hashes")
+                            && !summary.contains("Unable to determine")
+                            && summary.length() > 50) {
                             context.clearHistory();
                             context.addMessage(Message.user("[Compacted]\n\n" + summary));
-                            log.info("RECOVERY_COMPACT: 全量摘要完成");
+                            log.info("RECOVERY_COMPACT: 全量摘要完成, length={}", summary.length());
                             recoveryManager.setAttemptedCompact(false);
+                        } else {
+                            log.warn("RECOVERY_COMPACT: 摘要质量不合格, 跳过压缩");
                         }
                     } catch (Exception e) {
                         log.error("RECOVERY_COMPACT 失败: {}", e.getMessage());
@@ -235,15 +241,29 @@ public class AgentLoop {
 
                 case LOOP_DETECTED:
                     // 检测到循环模式：强制触发摘要打断
+                    log.warn("[LoopBreak] 循环检测触发，开始压缩上下文");
                     outputHandler.accept(outputFormatter.formatWarning("检测到重复操作模式，触发上下文压缩"));
                     try {
                         // 清空 recentToolCalls 避免立即再次触发
                         recoveryManager.clearRecentToolCalls();
                         String summary = compactHistory(context, startTime);
-                        if (summary != null && !summary.isEmpty()) {
+                        
+                        // 验证摘要质量：必须包含实际内容，不能是占位符或空内容
+                        if (summary != null && !summary.isEmpty() 
+                            && !summary.contains("object hashes")
+                            && !summary.contains("Unable to determine")
+                            && summary.length() > 50) {
+                            log.info("[LoopBreak] 压缩摘要长度: {} 字符", summary.length());
+                            log.debug("[LoopBreak] 压缩摘要内容: {}", summary.substring(0, Math.min(500, summary.length())));
                             context.clearHistory();
                             context.addMessage(Message.user("[Compacted — loop break]\n\n" + summary));
                             recoveryManager.setAttemptedCompact(false);
+                        } else {
+                            // 摘要质量不合格，不压缩，直接终止循环
+                            log.warn("[LoopBreak] 压缩摘要质量不合格(length={}, content={}), 直接终止循环", 
+                                summary != null ? summary.length() : 0,
+                                summary != null ? summary.substring(0, Math.min(100, summary.length())) : "null");
+                            return AgentResult.failure("检测到循环且无法生成有效摘要，任务终止");
                         }
                     } catch (Exception e) {
                         log.error("LOOP_DETECTED 压缩失败: {}", e.getMessage());

@@ -173,11 +173,17 @@ public class RecoveryManager {
      */
     public ContinueReason recordToolCall(String toolName, Map<String, Object> args) {
         String digest = digestArgs(toolName, args);
+        log.info("[LoopDetect] 工具调用: tool={}, digest={}, argsKeys={}", 
+            toolName, digest, args != null ? args.keySet() : "null");
         recentToolCalls.addLast(new ToolCallRecord(toolName, digest));
         if (recentToolCalls.size() > LOOP_BUFFER_SIZE) {
             recentToolCalls.removeFirst();
         }
-        return detectLoop(toolName);
+        ContinueReason result = detectLoop(toolName);
+        if (result != null) {
+            log.warn("[LoopDetect] 循环检测触发! buffer={}", recentToolCalls);
+        }
+        return result;
     }
 
     /**
@@ -236,7 +242,10 @@ public class RecoveryManager {
     private ContinueReason detectLoop(String toolName) {
         int threshold = getThresholdForTool(toolName);
         
-        if (recentToolCalls.size() < threshold) return null;
+        if (recentToolCalls.size() < threshold) {
+            log.debug("[LoopDetect] buffer不足: size={}, threshold={}", recentToolCalls.size(), threshold);
+            return null;
+        }
 
         // 检查最后 N 个调用是否完全相同（连续重复）
         String lastKey = null;
@@ -246,6 +255,7 @@ public class RecoveryManager {
             String currentKey = r.toolName + ":" + r.argsDigest;
             if (currentKey.equals(lastKey)) {
                 consecutiveCount++;
+                log.debug("[LoopDetect] 连续重复: key={}, count={}", currentKey, consecutiveCount + 1);
                 if (consecutiveCount >= threshold) {
                     log.warn("检测到连续循环模式: '{}' 连续出现 {} 次（阈值 {}）",
                         currentKey, consecutiveCount + 1, threshold);
