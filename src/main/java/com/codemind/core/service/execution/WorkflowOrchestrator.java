@@ -50,6 +50,7 @@ public class WorkflowOrchestrator {
     private final SystemPromptBuilder promptBuilder;
     private final CompactionPipeline compactionPipeline;
     private final TokenBudget tokenBudget;
+    private final int llmStreamingTimeoutSeconds;
 
     // ==================== 文件内容缓存 (LRU, 跨请求) ====================
 
@@ -64,6 +65,7 @@ public class WorkflowOrchestrator {
     public WorkflowOrchestrator(LLMClient llmClient, ToolRegistry toolRegistry,
                                 OutputFormatter outputFormatter,
                                 int maxIterations, int maxExecutionTimeSeconds,
+                                int llmStreamingTimeoutSeconds,
                                 SystemPromptBuilder promptBuilder,
                                 CompactionPipeline compactionPipeline,
                                 TokenBudget tokenBudget) {
@@ -72,6 +74,7 @@ public class WorkflowOrchestrator {
         this.outputFormatter = outputFormatter;
         this.maxIterations = maxIterations;
         this.maxExecutionTimeMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
+        this.llmStreamingTimeoutSeconds = llmStreamingTimeoutSeconds;
         this.promptBuilder = promptBuilder;
         this.compactionPipeline = compactionPipeline;
         this.tokenBudget = tokenBudget;
@@ -295,7 +298,7 @@ public class WorkflowOrchestrator {
         // ReAct 核心处理器
         map.put(ContinueReason.THINK, new ThinkHandler(
             llmClient, toolRegistry, outputFormatter, compactionPipeline,
-            tokenBudget, stopHook, promptBuilder, compacter));
+            tokenBudget, stopHook, promptBuilder, compacter, llmStreamingTimeoutSeconds));
         map.put(ContinueReason.ACT, new ActHandler(
             outputFormatter, toolRegistry, toolRetryStrategy, fileContentCache));
 

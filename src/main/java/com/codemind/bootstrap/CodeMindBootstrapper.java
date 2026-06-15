@@ -47,11 +47,18 @@ import com.codemind.impl.mcp.McpToolRegistry;
 
 public class CodeMindBootstrapper {
 
+    // 与 Settings.java 和 CLI.java 保持一致的默认值
+    private static final int DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS = 300;
+
     public BootstrapResult bootstrap(Path projectDir) {
-        return bootstrap(projectDir, 50, 300, null);
+        return bootstrap(projectDir, 50, 300, null, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS);
     }
 
     public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds, Path configPath) {
+        return bootstrap(projectDir, maxIterations, timeoutSeconds, configPath, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS);
+    }
+
+    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds, Path configPath, int llmStreamingTimeoutSeconds) {
         // 1. 基础设施
         DefaultOutputFormatter outputFormatter = new DefaultOutputFormatter();
         CLIPermissionPrompter prompter = new CLIPermissionPrompter(outputFormatter);
@@ -158,8 +165,10 @@ public class CodeMindBootstrapper {
         // 12. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
         int effectiveMaxIterations = settings.getAgent().getMaxIterations();
         int effectiveTimeout = settings.getAgent().getTimeoutSeconds();
+        int effectiveLlmStreamingTimeout = settings.getAgent().getLlmStreamingTimeoutSeconds();
         if (maxIterations != 50) effectiveMaxIterations = maxIterations;
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
+        if (llmStreamingTimeoutSeconds != DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS) effectiveLlmStreamingTimeout = llmStreamingTimeoutSeconds;
 
         // MCP 初始化 — 使用 McpToolRegistry 管理 MCP 工具生命周期
         // 同时注册到主 ToolRegistry 以获得完整 Hook 链
@@ -206,7 +215,8 @@ public class CodeMindBootstrapper {
         // 13. Agent 循环（MCP 工具已注册到主 ToolRegistry）
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
-            effectiveMaxIterations, effectiveTimeout, skillRouter, promptBuilder,
+            effectiveMaxIterations, effectiveTimeout, effectiveLlmStreamingTimeout,
+            skillRouter, promptBuilder,
             compactionPipeline, tokenBudget
         );
 
@@ -216,7 +226,7 @@ public class CodeMindBootstrapper {
 
         return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry,
             mcpToolRegistry, permissionGate, skillRouter, promptBuilder, modelManager,
-            settings, effectiveMaxIterations, effectiveTimeout);
+            settings, effectiveMaxIterations, effectiveTimeout, effectiveLlmStreamingTimeout);
     }
 
     public record BootstrapResult(
@@ -231,6 +241,7 @@ public class CodeMindBootstrapper {
         ModelManager modelManager,
         Settings settings,
         int effectiveMaxIterations,
-        int effectiveTimeoutSeconds
+        int effectiveTimeoutSeconds,
+        int effectiveLlmStreamingTimeoutSeconds
     ) {}
 }

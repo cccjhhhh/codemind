@@ -43,13 +43,15 @@ public class ThinkHandler implements StateHandler {
     private final StopHook stopHook;
     private final SystemPromptBuilder promptBuilder;
     private final Function<ExecutionState, String> compacter;
+    private final int llmStreamingTimeoutSeconds;
 
     public ThinkHandler(LLMClient llmClient, ToolRegistry toolRegistry,
                         OutputFormatter outputFormatter,
                         CompactionPipeline compactionPipeline,
                         TokenBudget tokenBudget, StopHook stopHook,
                         SystemPromptBuilder promptBuilder,
-                        Function<ExecutionState, String> compacter) {
+                        Function<ExecutionState, String> compacter,
+                        int llmStreamingTimeoutSeconds) {
         this.llmClient = llmClient;
         this.toolRegistry = toolRegistry;
         this.outputFormatter = outputFormatter;
@@ -58,6 +60,7 @@ public class ThinkHandler implements StateHandler {
         this.stopHook = stopHook;
         this.promptBuilder = promptBuilder;
         this.compacter = compacter;
+        this.llmStreamingTimeoutSeconds = llmStreamingTimeoutSeconds;
     }
 
     @Override
@@ -233,7 +236,7 @@ public class ThinkHandler implements StateHandler {
             });
 
             try {
-                if (!latch.await(30, TimeUnit.SECONDS)) {
+                if (!latch.await(llmStreamingTimeoutSeconds, TimeUnit.SECONDS)) {
                     cancelled.set(true);
                     if (attempt < maxAttempts) {
                         log.warn("LLM 流式响应超时（attempt {}/{}），重试中...", attempt, maxAttempts);

@@ -113,10 +113,15 @@ public class Settings {
     public static class AgentConfig {
         private int maxIterations = 50;
         private int timeoutSeconds = 300;
+        // 流式响应超时：复杂任务（如读取大量文件、生成架构图）需要更长时间
+        // 业界标准：Claude Code 300s, OpenAI Codex 300s, LangChain 120-240s
+        private int llmStreamingTimeoutSeconds = 300;
 
         public int getMaxIterations() { return maxIterations; }
         public void setMaxIterations(int v) { this.maxIterations = v; }
         public int getTimeoutSeconds() { return timeoutSeconds; }
         public void setTimeoutSeconds(int v) { this.timeoutSeconds = v; }
+        public int getLlmStreamingTimeoutSeconds() { return llmStreamingTimeoutSeconds; }
+        public void setLlmStreamingTimeoutSeconds(int llmStreamingTimeoutSeconds) { this.llmStreamingTimeoutSeconds = llmStreamingTimeoutSeconds; }
     }
 }

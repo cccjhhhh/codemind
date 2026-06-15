@@ -84,6 +84,7 @@ public class CLI implements Runnable {
     // Effective agent parameters from bootstrapper (settings + CLI flags merged)
     private int effectiveMaxIterations = DEFAULT_MAX_ITERATIONS;
     private int effectiveTimeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
+    private int effectiveLlmStreamingTimeoutSeconds = DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS;
 
     // Thread-safe reference to current session context (allows /load to swap it)
     private AtomicReference<SessionContext> contextRef;
@@ -103,6 +104,12 @@ public class CLI implements Runnable {
     @Option(names = {"--timeout"}, description = "超时时间（秒，默认 300）")
     private int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
 
+    // 300秒 = 5分钟，与 Claude Code/OpenAI Codex 一致，支持复杂任务
+    private static final int DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS = 300;
+
+    @Option(names = {"--llm-timeout"}, description = "LLM 流式响应超时（秒，默认 300）")
+    private int llmStreamingTimeoutSeconds = DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS;
+
     public static void main(String[] args) {
         int exitCode = new CommandLine(new CLI()).execute(args);
         System.exit(exitCode);
@@ -118,7 +125,7 @@ public class CLI implements Runnable {
         // Use CodeMindBootstrapper for everything
         CodeMindBootstrapper bootstrapper = new CodeMindBootstrapper();
         var bootResult = bootstrapper.bootstrap(projectDir, maxIterations, timeoutSeconds,
-            configPath != null && !configPath.isEmpty() ? Path.of(configPath) : null);
+            configPath != null && !configPath.isEmpty() ? Path.of(configPath) : null, llmStreamingTimeoutSeconds);
 
         this.toolRegistry = bootResult.toolRegistry();
         this.permissionGate = bootResult.permissionGate();
@@ -127,6 +134,7 @@ public class CLI implements Runnable {
         AgentLoop agentLoop = bootResult.agentLoop();
         this.effectiveMaxIterations = bootResult.effectiveMaxIterations();
         this.effectiveTimeoutSeconds = bootResult.effectiveTimeoutSeconds();
+        this.effectiveLlmStreamingTimeoutSeconds = bootResult.effectiveLlmStreamingTimeoutSeconds();
         this.contextRef = new AtomicReference<>(bootResult.session());
         var skillRouter = bootResult.skillRouter();
         var promptBuilder = bootResult.promptBuilder();
@@ -167,7 +175,7 @@ public class CLI implements Runnable {
                         // 模型已切换，重新创建客户端
                         try {
                             LLMClient newClient = ModelFactory.create(newModel);
-                            agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, effectiveMaxIterations, effectiveTimeoutSeconds, skillRouter, promptBuilder, null, null);
+                            agentLoop = new AgentLoop(newClient, toolRegistry, permissionGate, outputFormatter, effectiveMaxIterations, effectiveTimeoutSeconds, effectiveLlmStreamingTimeoutSeconds, skillRouter, promptBuilder, null, null);
                             System.out.println(GREEN + "✓ 模型切换成功！" + RESET);
                             System.out.println();
                         } catch (Exception e) {

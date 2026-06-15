@@ -35,13 +35,14 @@ public class AgentLoop {
     public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
                      PermissionGate permissionGate, OutputFormatter outputFormatter,
                      int maxIterations, int maxExecutionTimeSeconds,
+                     int llmStreamingTimeoutSeconds,
                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder,
                      CompactionPipeline compactionPipeline, TokenBudget tokenBudget) {
         this.permissionGate = permissionGate;
         this.skillRouter = skillRouter;
         this.orchestrator = new WorkflowOrchestrator(
             llmClient, toolRegistry, outputFormatter,
-            maxIterations, maxExecutionTimeSeconds,
+            maxIterations, maxExecutionTimeSeconds, llmStreamingTimeoutSeconds,
             promptBuilder, compactionPipeline, tokenBudget);
     }
 
@@ -101,7 +102,7 @@ public class AgentLoop {
             orchestrator.getToolRegistry(),
             permissionGate,
             orchestrator.getOutputFormatter(),
-            15, 60, null, null, null, null
+            15, 60, 30, null, null, null, null
         );
     }
 }
