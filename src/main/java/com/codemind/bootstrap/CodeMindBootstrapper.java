@@ -1,49 +1,47 @@
 package com.codemind.bootstrap;
 
 import com.codemind.api.llm.LLMClient;
+import com.codemind.api.mcp.*;
 import com.codemind.api.safety.PermissionGate;
 import com.codemind.api.safety.PermissionLevel;
 import com.codemind.api.session.SessionContext;
 import com.codemind.api.session.SessionManager;
+import com.codemind.api.skill.SkillDefinition;
+import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolRegistry;
 import com.codemind.core.AgentLoop;
+import com.codemind.core.TokenBudget;
 import com.codemind.impl.cli.CLIPermissionPrompter;
 import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.cli.SystemPromptBuilder;
 import com.codemind.impl.config.Settings;
 import com.codemind.impl.config.SettingsLoader;
-import com.codemind.impl.hook.*;
+import com.codemind.impl.hook.MetricsHook;
+import com.codemind.impl.hook.PermissionPreHook;
+import com.codemind.impl.hook.SafetyPreHook;
+import com.codemind.impl.hook.TruncationHook;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
+import com.codemind.impl.mcp.McpClientFactoryImpl;
+import com.codemind.impl.mcp.McpConfigLoader;
+import com.codemind.impl.mcp.McpToolAdapterImpl;
+import com.codemind.impl.mcp.McpToolRegistry;
 import com.codemind.impl.safety.PermissionGateImpl;
 import com.codemind.impl.safety.PermissionGateImpl.PermissionRule;
 import com.codemind.impl.session.CompactionPipeline;
 import com.codemind.impl.session.SessionManagerImpl;
 import com.codemind.impl.session.SlidingWindowContextManager;
-import com.codemind.core.TokenBudget;
 import com.codemind.impl.skill.ClasspathSkillProvider;
 import com.codemind.impl.skill.DirectorySkillProvider;
-import com.codemind.api.skill.SkillDefinition;
 import com.codemind.impl.skill.SkillRegistry;
 import com.codemind.impl.skill.routing.ConfidenceSkillRouter;
 import com.codemind.impl.skill.routing.SkillRouter;
 import com.codemind.impl.tool.*;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.ArrayList;
-
-import com.codemind.api.mcp.McpClient;
-import com.codemind.api.mcp.McpClientFactory;
-import com.codemind.api.mcp.McpServerConfig;
-import com.codemind.api.mcp.McpToolAdapter;
-import com.codemind.api.mcp.McpToolDefinition;
-import com.codemind.api.tool.Tool;
-import com.codemind.impl.mcp.McpClientFactoryImpl;
-import com.codemind.impl.mcp.McpConfigLoader;
-import com.codemind.impl.mcp.McpToolAdapterImpl;
-import com.codemind.impl.mcp.McpToolRegistry;
 
 public class CodeMindBootstrapper {
 
@@ -221,7 +219,7 @@ public class CodeMindBootstrapper {
         );
 
         // 注册依赖 AgentLoop 的工具
-        toolRegistry.register(new TaskTool(agentLoop, projectDir));
+        toolRegistry.register(new TaskTool(agentLoop, projectDir, settings));
         session.setSystemMessage(promptBuilder.build(session));
 
         return new BootstrapResult(agentLoop, session, sessionManager, toolRegistry,

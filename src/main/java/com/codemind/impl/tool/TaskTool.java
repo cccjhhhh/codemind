@@ -1,11 +1,11 @@
 package com.codemind.impl.tool;
 
-import com.codemind.api.session.SessionContext;
 import com.codemind.api.tool.Tool;
 import com.codemind.api.tool.ToolResult;
-import com.codemind.core.async.TaskDelegationService;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
+import com.codemind.core.async.TaskDelegationService;
+import com.codemind.impl.config.Settings;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,12 +27,16 @@ public class TaskTool implements Tool {
 
     private static final Logger log = LoggerFactory.getLogger(TaskTool.class);
     private static final ObjectMapper JSON = new ObjectMapper();
-    private static final int SUBTASK_TIMEOUT_SECONDS = 120;
+    private static final int DEFAULT_SUBTASK_TIMEOUT_SECONDS = 300;
 
     private final TaskDelegationService delegationService;
+    private final int subtaskTimeoutSeconds;
 
-    public TaskTool(AgentLoop parentLoop, Path workingDirectory) {
+    public TaskTool(AgentLoop parentLoop, Path workingDirectory, Settings settings) {
         this.delegationService = new TaskDelegationService(parentLoop, workingDirectory);
+        this.subtaskTimeoutSeconds = settings != null && settings.getAgent() != null
+            ? settings.getAgent().getSubtaskTimeoutSeconds()
+            : DEFAULT_SUBTASK_TIMEOUT_SECONDS;
     }
 
     @Override
@@ -65,7 +69,7 @@ public class TaskTool implements Tool {
 
         try {
             Future<AgentResult> future = delegationService.delegate(instruction);
-            AgentResult result = future.get(SUBTASK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            AgentResult result = future.get(subtaskTimeoutSeconds, TimeUnit.SECONDS);
 
             if (result.isSuccess()) {
                 return ToolResult.success(result.getMessage());
@@ -73,7 +77,7 @@ public class TaskTool implements Tool {
                 return ToolResult.failure("子任务失败: " + result.getError());
             }
         } catch (java.util.concurrent.TimeoutException e) {
-            return ToolResult.failure("子任务执行超时(" + SUBTASK_TIMEOUT_SECONDS + "s)");
+            return ToolResult.failure("子任务执行超时(" + subtaskTimeoutSeconds + "s)");
         } catch (Exception e) {
             return ToolResult.failure("子任务异常: " + e.getMessage());
         }

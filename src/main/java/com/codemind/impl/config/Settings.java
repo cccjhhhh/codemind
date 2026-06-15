@@ -116,6 +116,8 @@ public class Settings {
         // 流式响应超时：复杂任务（如读取大量文件、生成架构图）需要更长时间
         // 业界标准：Claude Code 300s, OpenAI Codex 300s, LangChain 120-240s
         private int llmStreamingTimeoutSeconds = 300;
+        // 子任务（Task 工具）超时时间，默认 300 秒
+        private int subtaskTimeoutSeconds = 300;
 
         public int getMaxIterations() { return maxIterations; }
         public void setMaxIterations(int v) { this.maxIterations = v; }
@@ -123,5 +125,7 @@ public class Settings {
         public void setTimeoutSeconds(int v) { this.timeoutSeconds = v; }
         public int getLlmStreamingTimeoutSeconds() { return llmStreamingTimeoutSeconds; }
         public void setLlmStreamingTimeoutSeconds(int llmStreamingTimeoutSeconds) { this.llmStreamingTimeoutSeconds = llmStreamingTimeoutSeconds; }
+        public int getSubtaskTimeoutSeconds() { return subtaskTimeoutSeconds; }
+        public void setSubtaskTimeoutSeconds(int subtaskTimeoutSeconds) { this.subtaskTimeoutSeconds = subtaskTimeoutSeconds; }
     }
 }

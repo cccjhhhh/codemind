@@ -12,15 +12,13 @@ import com.codemind.api.tool.ToolRegistry;
 import com.codemind.bootstrap.CodeMindBootstrapper;
 import com.codemind.core.AgentLoop;
 import com.codemind.core.AgentResult;
-import com.codemind.impl.cli.CLIPermissionPrompter;
-import com.codemind.impl.cli.DefaultOutputFormatter;
 import com.codemind.impl.llm.ModelFactory;
 import com.codemind.impl.llm.ModelManager;
+import com.codemind.impl.mcp.McpCommandHandler;
+import com.codemind.impl.mcp.McpConfigLoader;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-import com.codemind.impl.mcp.McpConfigLoader;
-import com.codemind.impl.mcp.McpCommandHandler;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -148,6 +146,17 @@ public class CLI implements Runnable {
         // Display current model
         System.out.println(GREEN + "当前模型: " + modelManager.getCurrentModel().getName() + RESET);
         System.out.println();
+        
+        // 检查 API Key 是否有效
+        if (!isApiKeyValid(modelManager.getCurrentModel())) {
+            System.out.println(YELLOW + "⚠ 首次运行？请先配置 API Key：" + RESET);
+            System.out.println("  编辑 ~/.codemind/settings.json");
+            System.out.println("  将 YOUR_*_API_KEY 替换为真实的 API Key");
+            System.out.println();
+            System.out.println("支持的模型：DeepSeek, GPT-4o");
+            System.out.println();
+        }
+        
         System.out.println("欢迎使用 CodeMind！");
         System.out.println("命令: " + CYAN + "/models" + RESET + " 查看模型, " +
                            CYAN + "/switch" + RESET + " 切换模型, " +

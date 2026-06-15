@@ -2,9 +2,9 @@ package com.codemind.impl.config;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -135,6 +135,8 @@ public class SettingsLoader {
                 target.getAgent().setMaxIterations(source.getAgent().getMaxIterations());
             if (source.getAgent().getTimeoutSeconds() != 300)
                 target.getAgent().setTimeoutSeconds(source.getAgent().getTimeoutSeconds());
+            if (source.getAgent().getSubtaskTimeoutSeconds() != 300)
+                target.getAgent().setSubtaskTimeoutSeconds(source.getAgent().getSubtaskTimeoutSeconds());
         }
         // 模型配置整体替换（不逐 key 合并，避免残留旧模型）
         if (source.getModels() != null && !source.getModels().isEmpty())
