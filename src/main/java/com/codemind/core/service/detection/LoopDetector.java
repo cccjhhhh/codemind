@@ -45,7 +45,8 @@ public class LoopDetector {
                 "Write", 3, "Edit", 3,
                 "Read", 4, "Bash", 4,
                 "Glob", 5, "Grep", 5,
-                "Task", 3
+                "Task", 3,
+                "Todo", 3, "WebFetch", 5, "LoadSkill", 3
         ));
     }
 
@@ -155,6 +156,22 @@ public class LoopDetector {
                 String instruction = (String) args.get("instruction");
                 yield toolName + ":" + (instruction != null ?
                         instruction.substring(0, Math.min(instruction.length(), 60)) : "?");
+            }
+            case "Todo" -> {
+                String operation = (String) args.get("operation");
+                String itemId = (String) args.get("item_id");
+                String goal = (String) args.get("goal");
+                yield toolName + ":" + (operation != null ? operation : "?")
+                        + "#" + (itemId != null ? itemId : (goal != null ? goal : ""));
+            }
+            case "WebFetch" -> {
+                String url = (String) args.get("url");
+                yield toolName + ":" + (url != null ?
+                        url.substring(0, Math.min(url.length(), 60)) : "?");
+            }
+            case "LoadSkill" -> {
+                String name = (String) args.get("name");
+                yield toolName + ":" + (name != null ? name : "?");
             }
             default -> toolName;
         };
