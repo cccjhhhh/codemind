@@ -1,6 +1,6 @@
 ---
 description: AgentLoop 只做状态转移，单文件 ≤ 200 行，不含业务实现。
-globs: "**/loop/AgentLoop.java"
+globs: "**/agent/AgentLoop.java"
 ---
 # AgentLoop 职责边界
 
@@ -8,7 +8,7 @@ globs: "**/loop/AgentLoop.java"
 - AgentLoop 只包含 `while + switch` 状态转移逻辑
 - 单文件行数 ≤ 200 行（含 import 和注释）
 - 每新增一个 `ContinueReason` 必须对应一个独立的 `StateHandler` 实现类
-- StateHandler 存放在 `loop/handler/` 包下，命名 `{Reason}Handler.java`
+- 核心 StateHandler 存放在 `pattern/react/` 包下（ThinkHandler, ActHandler），恢复处理器存放在 `recovery/` 包下（CompactHandler, LoopBreakHandler 等）
 - 所有 side effect 必须在 StateHandler 内部完成
 
 ## 禁止出现在 AgentLoop.java 中

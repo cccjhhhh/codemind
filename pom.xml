@@ -156,7 +156,7 @@
                         <configuration>
                             <transformers>
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                                    <mainClass>com.codemind.impl.cli.CLI</mainClass>
+                                    <mainClass>com.codemind.frontend.cli.CLI</mainClass>
                                 </transformer>
                             </transformers>
                             <createDependencyReducedPom>false</createDependencyReducedPom>

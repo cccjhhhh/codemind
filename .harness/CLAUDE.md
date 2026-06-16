@@ -34,8 +34,5 @@ CodeMind 是一个 Java 编程助手 AI Agent，核心是 AgentLoop 状态机驱
 - 测试依赖保留 POM（scope=test）
 
 ## 当前告警
-- #arch AgentLoop 834 行 → 必须拆分
-- #arch 三条压缩路径冲突 → 必须合并
-- #arch L4 clearHistory() 破坏结构 → 必须改为保留 role
-- #arch RecoveryManager 混杂循环检测 → 必须分离
-- #arch executeBatchParallel 局部创建线程池 → 必须统一管理
+- #arch 三条压缩路径冲突 → 必须合并（SlidingWindowManager / TokenBudget / CompactionPipeline 三条路径尚未统一）
+- #arch L4 clearHistory() 破坏结构 → 必须改为保留 role（CompactHandler, LoopBreakHandler 中仍在使用 clearHistory）
