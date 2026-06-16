@@ -1,7 +1,8 @@
-package com.codemind.impl.cli;
+package com.codemind.frontend.cli;
 
-import com.codemind.api.cli.OutputFormatter;
-import com.codemind.api.tool.ToolResult;
+import com.codemind.frontend.output.spi.OutputFormatter;
+import com.codemind.frontend.style.AnsiStyles;
+import com.codemind.tool.ToolResult;
 
 import java.util.Map;
 

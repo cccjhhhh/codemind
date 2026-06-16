@@ -1,21 +1,21 @@
-package com.codemind.impl.cli;
+package com.codemind.frontend.cli;
 
-import com.codemind.api.cli.OutputFormatter;
-import com.codemind.api.llm.LLMClient;
-import com.codemind.api.llm.ModelConfig;
-import com.codemind.api.safety.PermissionGate;
-import com.codemind.api.safety.PermissionLevel;
-import com.codemind.api.safety.PermissionPrompter;
-import com.codemind.api.session.SessionContext;
-import com.codemind.api.session.SessionManager;
-import com.codemind.api.tool.ToolRegistry;
+import com.codemind.frontend.output.spi.OutputFormatter;
+import com.codemind.llm.LLMClient;
+import com.codemind.llm.ModelConfig;
+import com.codemind.safety.PermissionGate;
+import com.codemind.safety.PermissionLevel;
+import com.codemind.safety.spi.PermissionPrompter;
+import com.codemind.session.SessionContext;
+import com.codemind.session.SessionManager;
+import com.codemind.tool.ToolRegistry;
 import com.codemind.bootstrap.CodeMindBootstrapper;
-import com.codemind.core.AgentLoop;
-import com.codemind.core.AgentResult;
-import com.codemind.impl.llm.ModelFactory;
-import com.codemind.impl.llm.ModelManager;
-import com.codemind.impl.mcp.McpCommandHandler;
-import com.codemind.impl.mcp.McpConfigLoader;
+import com.codemind.agent.AgentLoop;
+import com.codemind.agent.spi.AgentResult;
+import com.codemind.llm.ModelFactory;
+import com.codemind.llm.ModelManager;
+import com.codemind.mcp.McpCommandHandler;
+import com.codemind.mcp.McpConfigLoader;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.atomic.AtomicReference;
 
-import static com.codemind.impl.cli.AnsiStyles.*;
+import static com.codemind.frontend.style.AnsiStyles.*;
 
 /**
  * CodeMind 命令行界面
@@ -468,7 +468,7 @@ public class CLI implements Runnable {
 
         if ("ALL".equalsIgnoreCase(toolName)) {
             // 授权所有工具
-            for (String name : ((com.codemind.impl.tool.ToolRegistryImpl) toolRegistry).getToolNames()) {
+            for (String name : ((com.codemind.tool.ToolRegistryImpl) toolRegistry).getToolNames()) {
                 permissionGate.setDefaultLevel(name, PermissionLevel.ALLOW);
             }
             System.out.println();
@@ -490,7 +490,7 @@ public class CLI implements Runnable {
         System.out.println(BOLD + "权限状态:" + RESET);
         System.out.println();
 
-        com.codemind.impl.tool.ToolRegistryImpl registry = (com.codemind.impl.tool.ToolRegistryImpl) toolRegistry;
+        com.codemind.tool.ToolRegistryImpl registry = (com.codemind.tool.ToolRegistryImpl) toolRegistry;
         for (String toolName : registry.getToolNames()) {
             PermissionLevel level = permissionGate.getDefaultLevel(toolName);
 
@@ -554,15 +554,15 @@ public class CLI implements Runnable {
         System.out.println(BOLD + "已保存的会话:" + RESET);
         System.out.println();
 
-        if (!(sessionManager instanceof com.codemind.impl.session.SessionManagerImpl)) {
+        if (!(sessionManager instanceof com.codemind.session.SessionManagerImpl)) {
             System.out.println(DIM + "会话管理不支持持久化" + RESET);
             System.out.println();
             return;
         }
 
-        com.codemind.impl.session.SessionManagerImpl sessionManagerImpl =
-            (com.codemind.impl.session.SessionManagerImpl) sessionManager;
-        java.util.List<com.codemind.dto.session.SessionInfoDto> sessions = sessionManagerImpl.listSavedSessions();
+        com.codemind.session.SessionManagerImpl sessionManagerImpl =
+            (com.codemind.session.SessionManagerImpl) sessionManager;
+        java.util.List<com.codemind.session.dto.SessionInfoDto> sessions = sessionManagerImpl.listSavedSessions();
 
         if (sessions.isEmpty()) {
             System.out.println(DIM + "暂无已保存的会话" + RESET);
@@ -573,7 +573,7 @@ public class CLI implements Runnable {
         System.out.println("  " + DIM + "ID" + RESET + "                    " + DIM + "创建时间" + RESET + "          " + DIM + "最后活跃" + RESET + "      " + DIM + "消息数" + RESET);
         System.out.println("  " + "-".repeat(80));
 
-        for (com.codemind.dto.session.SessionInfoDto session : sessions) {
+        for (com.codemind.session.dto.SessionInfoDto session : sessions) {
             System.out.printf("  %-24s %s    %s    %d%n",
                 session.getSessionId().substring(0, Math.min(8, session.getSessionId().length())) + "...",
                 session.getCreatedAt().toString().substring(0, 16),
@@ -599,17 +599,17 @@ public class CLI implements Runnable {
 
         String sessionId = parts[1];
 
-        if (!(sessionManager instanceof com.codemind.impl.session.SessionManagerImpl)) {
+        if (!(sessionManager instanceof com.codemind.session.SessionManagerImpl)) {
             System.out.println(RED + "错误: 会话管理不支持持久化" + RESET);
             System.out.println();
             return;
         }
 
-        com.codemind.impl.session.SessionManagerImpl sessionManagerImpl =
-            (com.codemind.impl.session.SessionManagerImpl) sessionManager;
+        com.codemind.session.SessionManagerImpl sessionManagerImpl =
+            (com.codemind.session.SessionManagerImpl) sessionManager;
 
         // 尝试加载会话
-        com.codemind.api.session.SessionContext loadedContext = sessionManagerImpl.loadSession(sessionId);
+        com.codemind.session.SessionContext loadedContext = sessionManagerImpl.loadSession(sessionId);
 
         if (loadedContext == null) {
             System.out.println(RED + "错误: 会话不存在或加载失败: " + sessionId + RESET);

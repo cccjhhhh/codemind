@@ -1,8 +1,8 @@
-package com.codemind.impl.cli;
+package com.codemind.frontend.cli;
 
-import com.codemind.api.cli.OutputFormatter;
-import com.codemind.api.safety.PermissionPrompter;
-import com.codemind.impl.cli.DefaultOutputFormatter;
+import com.codemind.frontend.output.spi.OutputFormatter;
+import com.codemind.safety.spi.PermissionPrompter;
+import com.codemind.frontend.cli.DefaultOutputFormatter;
 
 import java.util.Scanner;
 

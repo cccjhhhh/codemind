@@ -1,6 +1,6 @@
-package com.codemind.api.cli;
+package com.codemind.frontend.output.spi;
 
-import com.codemind.api.tool.ToolResult;
+import com.codemind.tool.ToolResult;
 
 import java.util.Map;
 

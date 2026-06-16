@@ -1,4 +1,4 @@
-package com.codemind.impl.cli;
+package com.codemind.frontend.style;
 
 /**
  * ANSI 转义序列样式常量
