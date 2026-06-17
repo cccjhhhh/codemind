@@ -1,0 +1,8 @@
+{
+  "name": "filesystem",
+  "description": "文件系统 MCP 服务器",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+  "env": {},
+  "disabled": false
+}

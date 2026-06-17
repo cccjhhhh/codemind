@@ -1,0 +1,10 @@
+{
+  "name": "codemind",
+  "version": "1.0.0",
+  "description": "Java 17 编程助手 AI Agent，AgentLoop 状态机驱动的多轮工具调用系统",
+  "providers": ["claude", "cursor", "codex", "copilot"],
+  "skills": ["add-new-tool", "add-new-compactor", "modify-compression"],
+  "mcp": ["filesystem"],
+  "subagents": ["architect", "thread-pool-reviewer"],
+  "hooks": ["verify-build", "verify-test"]
+}

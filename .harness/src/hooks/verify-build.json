@@ -1,0 +1,9 @@
+{
+  "name": "verify-build",
+  "description": "构建验证钩子",
+  "trigger": "post-commit",
+  "command": "mvn clean compile -q",
+  "timeout": 120000,
+  "success_message": "构建成功",
+  "failure_message": "构建失败，请检查代码"
+}

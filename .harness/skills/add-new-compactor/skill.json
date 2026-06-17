@@ -1,6 +1,0 @@
-{
-  "name": "add-new-compactor",
-  "description": "新增一个压缩策略（Compactor）：实现 Compactor 接口 → 注册到 CompressionOrchestrator。",
-  "trigger": "需要新增上下文压缩策略时",
-  "output": "一个新的 Compactor 实现"
-}

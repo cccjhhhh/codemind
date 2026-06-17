@@ -1,6 +1,0 @@
-{
-  "name": "modify-compression",
-  "description": "修改上下文压缩逻辑时的检查清单，避免破坏消息结构。",
-  "trigger": "修改 ContextCompressionOrchestrator 或任何 Compactor 时",
-  "output": "符合规则约束的压缩逻辑修改"
-}

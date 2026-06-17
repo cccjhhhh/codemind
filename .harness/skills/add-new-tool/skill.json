@@ -1,6 +1,0 @@
-{
-  "name": "add-new-tool",
-  "description": "新增一个 Tool 的标准流程：定义接口 → 实现 → 注册 → 验证。",
-  "trigger": "需要添加新的工具/命令时",
-  "output": "一个新的 Tool 实现类，已注册到 ToolRegistry"
-}

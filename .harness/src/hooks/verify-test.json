@@ -1,0 +1,9 @@
+{
+  "name": "verify-test",
+  "description": "测试验证钩子",
+  "trigger": "pre-push",
+  "command": "mvn test -q",
+  "timeout": 300000,
+  "success_message": "所有测试通过",
+  "failure_message": "测试失败，请修复后再推送"
+}
