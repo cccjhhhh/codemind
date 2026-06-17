@@ -6,12 +6,8 @@ import com.codemind.agent.statemachine.pattern.ReactState;
 import com.codemind.agent.statemachine.StateHandler;
 
 import com.codemind.llm.Message;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ContinuationHandler implements StateHandler {
-
-    private static final Logger log = LoggerFactory.getLogger(ContinuationHandler.class);
 
     @Override
     public HandlerResult handle(ExecutionState state) {

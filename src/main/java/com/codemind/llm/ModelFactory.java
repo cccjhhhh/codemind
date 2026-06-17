@@ -1,9 +1,7 @@
 package com.codemind.llm;
 
-import com.codemind.llm.LLMClient;
-import com.codemind.llm.ModelConfig;
-import com.codemind.safety.spi.RateLimiter;
 import com.codemind.safety.RateLimiterFactory;
+import com.codemind.safety.spi.RateLimiter;
 
 /**
  * 模型工厂
@@ -39,8 +37,9 @@ public class ModelFactory {
         }
         
         String type = config.getType();
-        if (type == null) {
-            type = "openai_compatible"; // 默认类型
+        if (type == null || type.isBlank()) {
+            throw new IllegalArgumentException(
+                "模型配置缺少 type 字段，请在 settings.json 中指定 type");
         }
         
         switch (type) {

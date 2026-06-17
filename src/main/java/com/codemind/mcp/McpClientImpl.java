@@ -1,8 +1,5 @@
 package com.codemind.mcp;
 
-import com.codemind.mcp.McpClient;
-import com.codemind.mcp.McpServerConfig;
-import com.codemind.mcp.McpToolDefinition;
 import com.codemind.tool.ToolResult;
 import com.codemind.common.exception.McpConnectionException;
 import com.codemind.common.exception.McpOperationException;
@@ -25,7 +22,6 @@ public class McpClientImpl implements McpClient {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private final McpTransportFactory transportFactory;
     private McpSyncClient sdkClient;
-    private McpServerConfig currentConfig;
     private String serverName;
     
     public McpClientImpl(McpTransportFactory transportFactory) {
@@ -35,7 +31,6 @@ public class McpClientImpl implements McpClient {
     @Override
     public void connect(McpServerConfig config) {
         try {
-            this.currentConfig = config;
             this.serverName = config.getCommand() != null ? config.getCommand() : config.getUrl();
             
             McpClientTransport transport = transportFactory.createTransport(config);

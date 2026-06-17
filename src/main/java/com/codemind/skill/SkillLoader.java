@@ -1,6 +1,5 @@
 package com.codemind.skill;
 
-import com.codemind.skill.SkillDefinition;
 import com.codemind.skill.SkillMetadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;

@@ -15,7 +15,7 @@ import java.util.Map;
  * 【harness 规则 09-recovery-scope】
  * - 只负责检测算法，不关心 AgentLoop 状态转移
  * - 输入：工具调用流 → 输出：LoopDetectionResult
- * - 缓冲区大小、阈值、冷却步数可配置
+ * - 缓冲区大小、统一阈值、冷却步数可配置
  */
 public class LoopDetector {
 
@@ -24,8 +24,8 @@ public class LoopDetector {
     /** 循环检测窗口大小 */
     private final int bufferSize;
 
-    /** 默认循环判定阈值：连续相同调用次数 */
-    private final int defaultThreshold;
+    /** 循环判定阈值：连续相同调用次数 */
+    private final int threshold;
 
     /** 冷却步数：触发 LOOP_DETECTED 后跳过检测的步数 */
     private final int cooldownSteps;
@@ -36,25 +36,14 @@ public class LoopDetector {
     /** 环形缓冲区：最近 N 条工具调用记录 */
     private final LinkedList<ToolCallRecord> recentToolCalls = new LinkedList<>();
 
-    /** 工具差异化阈值：特定工具的阈值覆盖 */
-    private final Map<String, Integer> toolThresholds;
-
     public LoopDetector() {
-        this(20, 3, 15, Map.of(
-                "Write", 3, "Edit", 3,
-                "Read", 4, "Bash", 4,
-                "Glob", 5, "Grep", 5,
-                "Task", 3,
-                "Todo", 3, "WebFetch", 5, "LoadSkill", 3
-        ));
+        this(20, 3, 15);
     }
 
-    public LoopDetector(int bufferSize, int defaultThreshold, int cooldownSteps,
-                        Map<String, Integer> toolThresholds) {
+    public LoopDetector(int bufferSize, int threshold, int cooldownSteps) {
         this.bufferSize = bufferSize;
-        this.defaultThreshold = defaultThreshold;
+        this.threshold = threshold;
         this.cooldownSteps = cooldownSteps;
-        this.toolThresholds = toolThresholds;
     }
 
     /**
@@ -96,8 +85,6 @@ public class LoopDetector {
     // ==================== 内部实现 ====================
 
     private LoopDetectionResult detect(String toolName) {
-        int threshold = toolThresholds.getOrDefault(toolName, defaultThreshold);
-
         if (recentToolCalls.size() < threshold) {
             return LoopDetectionResult.NEGATIVE;
         }

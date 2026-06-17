@@ -3,20 +3,14 @@ package com.codemind.agent.pattern.react;
 import com.codemind.agent.SystemPromptBuilder;
 import com.codemind.agent.engine.ExecutionState;
 import com.codemind.agent.engine.TokenBudget;
-import com.codemind.agent.recovery.BudgetHandler;
-import com.codemind.agent.recovery.CompactHandler;
-import com.codemind.agent.recovery.ContinuationHandler;
-import com.codemind.agent.recovery.EscalateHandler;
-import com.codemind.agent.recovery.FailoverHandler;
-import com.codemind.agent.recovery.LoopBreakHandler;
-import com.codemind.agent.recovery.RetryHandler;
+import com.codemind.agent.recovery.*;
 import com.codemind.agent.spi.AgentPattern;
 import com.codemind.agent.statemachine.ContinueReason;
 import com.codemind.agent.statemachine.StateHandler;
 import com.codemind.agent.statemachine.pattern.ReactState;
+import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.LLMClient;
-import com.codemind.session.CompactionPipeline;
 import com.codemind.tool.ToolRegistry;
 
 import java.util.LinkedHashMap;
@@ -46,7 +40,7 @@ public class ReactAgentPattern implements AgentPattern {
             LLMClient llmClient,
             ToolRegistry toolRegistry,
             OutputFormatter outputFormatter,
-            CompactionPipeline compactionPipeline,
+            ContextCompressionOrchestrator compactionPipeline,
             TokenBudget tokenBudget,
             SystemPromptBuilder promptBuilder,
             Function<ExecutionState, String> compacter,

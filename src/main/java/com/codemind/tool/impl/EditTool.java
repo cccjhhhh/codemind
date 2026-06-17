@@ -1,7 +1,7 @@
 package com.codemind.tool.impl;
 
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -10,7 +10,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * 文件编辑工具
@@ -38,11 +37,6 @@ public class EditTool implements Tool {
     @Override
     public String getDescription() {
         return "对文件进行增量修改。必须提供精确的 oldString 进行替换。";
-    }
-    
-    @Override
-    public Optional<String> getDeprecatedName() {
-        return Optional.empty();  // 无废弃名称
     }
     
     @Override

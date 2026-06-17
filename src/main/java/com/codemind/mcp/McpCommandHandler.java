@@ -1,6 +1,5 @@
 package com.codemind.mcp;
 
-import com.codemind.mcp.McpServerConfig;
 import java.nio.file.Path;
 import java.util.Map;
 

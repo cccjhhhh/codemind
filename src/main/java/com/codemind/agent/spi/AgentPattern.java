@@ -4,9 +4,9 @@ import com.codemind.agent.SystemPromptBuilder;
 import com.codemind.agent.engine.ExecutionState;
 import com.codemind.agent.engine.TokenBudget;
 import com.codemind.agent.statemachine.StateHandler;
+import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.LLMClient;
-import com.codemind.session.CompactionPipeline;
 import com.codemind.tool.ToolRegistry;
 
 import java.util.Map;
@@ -35,7 +35,7 @@ public interface AgentPattern {
      * @param llmClient        LLM 客户端
      * @param toolRegistry     工具注册表
      * @param outputFormatter  输出格式化器
-     * @param compactionPipeline 上下文压缩管线
+     * @param compactionPipeline 上下文压缩编排器
      * @param tokenBudget      Token 预算
      * @param promptBuilder     System Prompt 构建器
      * @param compacter        压缩回调（方法引用）
@@ -47,7 +47,7 @@ public interface AgentPattern {
         LLMClient llmClient,
         ToolRegistry toolRegistry,
         OutputFormatter outputFormatter,
-        CompactionPipeline compactionPipeline,
+        ContextCompressionOrchestrator compactionPipeline,
         TokenBudget tokenBudget,
         SystemPromptBuilder promptBuilder,
         Function<ExecutionState, String> compacter,

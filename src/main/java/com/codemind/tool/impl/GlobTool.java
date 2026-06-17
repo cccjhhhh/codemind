@@ -1,8 +1,8 @@
 package com.codemind.tool.impl;
 
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ExcludeRules;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -55,14 +55,6 @@ public class GlobTool implements Tool {
         return "列举匹配模式的文件，自动排除 .git、target 等目录。支持 glob 模式（**/*.java）。";
     }
     
-    /**
-     * 向后兼容：旧工具名
-     */
-    @Override
-    public java.util.Optional<String> getDeprecatedName() {
-        return java.util.Optional.of("glob");
-    }
-
     @Override
     public JsonNode getInputSchema() {
         ObjectNode schema = JSON.createObjectNode();

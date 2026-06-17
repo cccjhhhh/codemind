@@ -55,40 +55,21 @@ public class SettingsLoader {
      * For collection fields, source values replace target values (not append).
      */
     /**
-     * 确保全局 settings.json 存在。如果不存在则创建包含默认模型配置的模板。
-     * 在首次启动时调用，提供开箱即用的体验。
+     * 确保全局配置目录存在。
      */
     public static Path ensureGlobalConfig() {
-        Path global = Path.of(System.getProperty("user.home"), ".codemind", "settings.json");
-        if (Files.exists(global)) return global;
-        try {
-            Files.createDirectories(global.getParent());
-            String template = """
-                {
-                    "models": {
-                        "deepseek": {
-                            "name": "DeepSeek",
-                            "type": "openai_compatible",
-                            "baseUrl": "https://api.deepseek.com/v1",
-                            "defaultModel": "deepseek-chat",
-                            "apiKey": "YOUR_DEEPSEEK_API_KEY"
-                        },
-                        "gpt": {
-                            "name": "GPT-4o",
-                            "type": "openai_compatible",
-                            "baseUrl": "https://api.openai.com/v1",
-                            "defaultModel": "gpt-4o",
-                            "apiKey": "YOUR_OPENAI_API_KEY"
-                        }
-                    },
-                    "currentModel": "deepseek"
-                }
-                """;
-            Files.writeString(global, template);
-            log.info("已创建默认全局配置: {}", global);
-        } catch (IOException e) {
-            log.warn("创建默认全局配置失败: {}", e.getMessage());
+        Path globalDir = Path.of(System.getProperty("user.home"), ".codemind");
+        Path global = globalDir.resolve("settings.json");
+
+        if (!Files.exists(globalDir)) {
+            try {
+                Files.createDirectories(globalDir);
+                log.info("已创建配置目录: {}", globalDir);
+            } catch (IOException e) {
+                log.warn("创建配置目录失败: {}", e.getMessage());
+            }
         }
+
         return global;
     }
 

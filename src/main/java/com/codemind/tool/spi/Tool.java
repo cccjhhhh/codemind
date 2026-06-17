@@ -4,7 +4,6 @@ import com.codemind.tool.ToolResult;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * 工具接口
@@ -41,17 +40,5 @@ public interface Tool {
      * @return 执行结果
      */
     ToolResult execute(Map<String, Object> params);
-    
-    /**
-     * 获取已废弃的工具名称（向后兼容）
-     * 
-     * 如果工具在重构后更改了名称，旧名称可以通过此方法暴露。
-     * LLM 会自动处理别名映射。
-     * 
-     * @return 废弃的工具名称，如果无废弃名称则返回空
-     */
-    default Optional<String> getDeprecatedName() {
-        return Optional.empty();
-    }
     
 }

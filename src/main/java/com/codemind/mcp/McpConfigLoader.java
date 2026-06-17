@@ -1,6 +1,5 @@
 package com.codemind.mcp;
 
-import com.codemind.mcp.McpServerConfig;
 import com.codemind.common.exception.McpConfigException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;

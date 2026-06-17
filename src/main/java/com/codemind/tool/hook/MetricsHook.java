@@ -2,23 +2,15 @@ package com.codemind.tool.hook;
 
 import com.codemind.tool.spi.ToolHook;
 import com.codemind.tool.ToolResult;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class MetricsHook implements ToolHook {
 
     private static final Logger log = LoggerFactory.getLogger(MetricsHook.class);
-    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final Map<String, Integer> toolCallCounts = new ConcurrentHashMap<>();
     private final Map<String, Integer> toolFailureCounts = new ConcurrentHashMap<>();

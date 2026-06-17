@@ -1,6 +1,5 @@
 package com.codemind.mcp;
 
-import com.codemind.mcp.McpServerConfig;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;

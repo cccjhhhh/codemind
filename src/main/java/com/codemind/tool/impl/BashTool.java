@@ -1,7 +1,7 @@
 package com.codemind.tool.impl;
 
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -90,11 +90,6 @@ public class BashTool implements Tool {
                "当前环境: " + os + " (" + shellType + ")\n" +
                examples + "\n" +
                "命令会在当前工作目录下执行。";
-    }
-
-    @Override
-    public java.util.Optional<String> getDeprecatedName() {
-        return java.util.Optional.of("execute_command");
     }
 
     @Override

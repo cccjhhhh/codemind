@@ -6,12 +6,9 @@ import com.codemind.agent.statemachine.pattern.ReactState;
 import com.codemind.agent.statemachine.StateHandler;
 
 import com.codemind.frontend.output.spi.OutputFormatter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class FailoverHandler implements StateHandler {
 
-    private static final Logger log = LoggerFactory.getLogger(FailoverHandler.class);
     private final OutputFormatter outputFormatter;
 
     public FailoverHandler(OutputFormatter outputFormatter) {

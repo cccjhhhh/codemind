@@ -1,26 +1,25 @@
 package com.codemind.agent.pattern.react;
 
-import com.codemind.agent.statemachine.HandlerResult;
+import com.codemind.agent.SystemPromptBuilder;
 import com.codemind.agent.engine.ExecutionState;
-import com.codemind.agent.statemachine.pattern.ReactState;
-import com.codemind.agent.statemachine.TerminalState;
-import com.codemind.agent.statemachine.StateHandler;
-
-import com.codemind.agent.statemachine.ContinueReason;
 import com.codemind.agent.engine.TokenBudget;
+import com.codemind.agent.statemachine.ContinueReason;
+import com.codemind.agent.statemachine.HandlerResult;
+import com.codemind.agent.statemachine.StateHandler;
+import com.codemind.agent.statemachine.TerminalState;
+import com.codemind.agent.statemachine.pattern.ReactState;
+import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.*;
 import com.codemind.session.SessionContext;
 import com.codemind.tool.ToolRegistry;
-import com.codemind.agent.SystemPromptBuilder;
-import com.codemind.session.CompactionPipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -45,7 +44,7 @@ public class ThinkHandler implements StateHandler {
     private final LLMClient llmClient;
     private final ToolRegistry toolRegistry;
     private final OutputFormatter outputFormatter;
-    private final CompactionPipeline compactionPipeline;
+    private final ContextCompressionOrchestrator compactionPipeline;
     private final TokenBudget tokenBudget;
     private final StopHook stopHook;
     private final SystemPromptBuilder promptBuilder;
@@ -54,7 +53,7 @@ public class ThinkHandler implements StateHandler {
 
     public ThinkHandler(LLMClient llmClient, ToolRegistry toolRegistry,
                         OutputFormatter outputFormatter,
-                        CompactionPipeline compactionPipeline,
+                        ContextCompressionOrchestrator compactionPipeline,
                         TokenBudget tokenBudget, StopHook stopHook,
                         SystemPromptBuilder promptBuilder,
                         Function<ExecutionState, String> compacter,

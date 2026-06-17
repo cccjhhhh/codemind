@@ -1,8 +1,8 @@
 package com.codemind.tool.impl;
 
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ExcludeRules;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -27,12 +27,6 @@ public class GrepTool implements Tool {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final int DEFAULT_MAX_RESULTS = 50;
 
-    /**
-     * 排除规则管理器
-     * 在每次 execute 时根据工作目录动态加载
-     * 使用 volatile 保证线程可见性
-     */
-    private volatile ExcludeRules excludeRules;
     
     @Override
     public String getName() {
@@ -42,14 +36,6 @@ public class GrepTool implements Tool {
     @Override
     public String getDescription() {
         return "在代码库中搜索匹配的代码片段，支持正则表达式";
-    }
-    
-    /**
-     * 向后兼容：旧工具名
-     */
-    @Override
-    public java.util.Optional<String> getDeprecatedName() {
-        return java.util.Optional.of("search_code");
     }
     
     @Override

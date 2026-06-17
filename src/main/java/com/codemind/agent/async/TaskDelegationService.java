@@ -3,8 +3,6 @@ package com.codemind.agent.async;
 import com.codemind.agent.AgentLoop;
 import com.codemind.agent.spi.AgentResult;
 import com.codemind.session.SessionContext;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.util.UUID;
@@ -19,8 +17,6 @@ import java.util.concurrent.TimeUnit;
  * 使用 TASK_DELEGATE 线程池统一管理子任务执行。
  */
 public class TaskDelegationService {
-
-    private static final Logger log = LoggerFactory.getLogger(TaskDelegationService.class);
 
     private final ThreadPoolExecutor executor;
     private final AgentLoop parentLoop;

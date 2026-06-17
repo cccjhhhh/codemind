@@ -4,6 +4,7 @@ import com.codemind.llm.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.*;
 
 /**
@@ -22,12 +23,46 @@ public class ContextCompressionOrchestrator {
     private static final Logger log = LoggerFactory.getLogger(ContextCompressionOrchestrator.class);
 
     private final List<Compactor> compactors;
+    private int consecutiveFailures = 0;
 
     public ContextCompressionOrchestrator(List<Compactor> compactors) {
         // 按 order 排序，保证执行顺序
         this.compactors = compactors.stream()
                 .sorted(Comparator.comparingInt(Compactor::order))
                 .toList();
+    }
+
+    /**
+     * 创建默认编排器，包含 L1、L2、L3 压缩器。
+     * 
+     * @param maxMessagesBeforeSnip L1 阈值
+     * @param keepRecentToolResults L2 保留数量
+     * @param budgetMaxBytes L3 预算（当前未使用，保留签名兼容性）
+     * @param spillDir L3 持久化目录
+     * @param spillThresholdChars L3 阈值
+     * @param sessionId 会话标识
+     * @param saveTranscripts 是否保存 transcripts（当前未使用）
+     */
+    public static ContextCompressionOrchestrator createDefault(
+            int maxMessagesBeforeSnip,
+            int keepRecentToolResults,
+            int budgetMaxBytes,
+            Path spillDir,
+            int spillThresholdChars,
+            String sessionId,
+            boolean saveTranscripts) {
+        List<Compactor> compactors = new ArrayList<>();
+        compactors.add(new L1SnipCompactor(maxMessagesBeforeSnip));
+        compactors.add(new L2MicroCompactor(keepRecentToolResults));
+        compactors.add(new L3SpillCompactor(spillThresholdChars, spillDir, sessionId));
+        return new ContextCompressionOrchestrator(compactors);
+    }
+
+    /**
+     * 重置连续失败计数。
+     */
+    public void resetFailures() {
+        consecutiveFailures = 0;
     }
 
     /**
@@ -57,6 +92,22 @@ public class ContextCompressionOrchestrator {
         }
 
         return new CompressionResult(result, didCompact, false, originalSize, result.size());
+    }
+
+    /**
+     * 运行完整压缩管线并返回压缩后的消息列表（便捷方法）。
+     * 等同于 run(messages, null).compressedMessages()。
+     */
+    public List<Message> run(List<Message> messages) {
+        var result = run(messages, null);
+        
+        if (!result.didCompact()) {
+            consecutiveFailures++;
+        } else {
+            consecutiveFailures = 0;
+        }
+        
+        return result.compressedMessages();
     }
 
     /**

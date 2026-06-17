@@ -1,7 +1,7 @@
 package com.codemind.tool.impl;
 
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -12,7 +12,6 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * 网页获取工具
@@ -45,11 +44,6 @@ public class WebFetchTool implements Tool {
     @Override
     public String getDescription() {
         return "获取网页内容，返回 HTML 或 Markdown 格式";
-    }
-    
-    @Override
-    public Optional<String> getDeprecatedName() {
-        return Optional.empty();  // 无废弃名称
     }
     
     @Override

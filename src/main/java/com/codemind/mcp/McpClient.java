@@ -1,8 +1,6 @@
 package com.codemind.mcp;
 
 import com.codemind.tool.ToolResult;
-import com.codemind.common.exception.McpConnectionException;
-import com.codemind.common.exception.McpOperationException;
 import java.util.List;
 import java.util.Map;
 

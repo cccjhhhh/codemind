@@ -1,13 +1,11 @@
 package com.codemind.mcp;
 
-import com.codemind.mcp.McpClient;
-import com.codemind.mcp.McpToolAdapter;
-import com.codemind.mcp.McpToolDefinition;
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
+
 import java.util.Map;
-import java.util.Optional;
+
 
 /**
  * MCP 工具适配器实现
@@ -46,14 +44,9 @@ public class McpToolAdapterImpl implements McpToolAdapter {
                     return ToolResult.failure("MCP tool execution failed: " + e.getMessage());
                 }
             }
-            
-            @Override
-            public Optional<String> getDeprecatedName() {
-                return Optional.empty();
-            }
         };
     }
-    
+
     @Override
     public String generatePrefixedName(String serverName, String toolName) {
         return PREFIX + serverName + "_" + toolName;

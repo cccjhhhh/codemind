@@ -1,18 +1,21 @@
 package com.codemind.agent.engine;
 
-import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.agent.SystemPromptBuilder;
 import com.codemind.agent.spi.AgentPattern;
 import com.codemind.agent.spi.AgentResult;
+import com.codemind.agent.statemachine.HandlerResult;
 import com.codemind.agent.statemachine.StateHandler;
 import com.codemind.agent.statemachine.TerminalState;
-import com.codemind.agent.statemachine.HandlerResult;
 import com.codemind.agent.statemachine.pattern.ReactState;
-import com.codemind.llm.*;
+import com.codemind.context.ContextCompressionOrchestrator;
+import com.codemind.frontend.output.spi.OutputFormatter;
+import com.codemind.llm.LLMClient;
+import com.codemind.llm.LLMResponse;
+import com.codemind.llm.Message;
+import com.codemind.llm.ToolCall;
+import com.codemind.safety.SafetyChecker;
 import com.codemind.session.SessionContext;
 import com.codemind.tool.ToolRegistry;
-import com.codemind.safety.SafetyChecker;
-import com.codemind.session.CompactionPipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,9 +23,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 /**
  * 执行编排器 — AgentLoop 状态机主循环。
@@ -53,7 +58,7 @@ public class WorkflowOrchestrator {
     private final int maxIterations;
     private final long maxExecutionTimeMs;
     private final SystemPromptBuilder promptBuilder;
-    private final CompactionPipeline compactionPipeline;
+    private final ContextCompressionOrchestrator compactionPipeline;
     private final TokenBudget tokenBudget;
     private final int llmStreamingTimeoutSeconds;
 
@@ -73,7 +78,7 @@ public class WorkflowOrchestrator {
                                 int maxIterations, int maxExecutionTimeSeconds,
                                 int llmStreamingTimeoutSeconds,
                                 SystemPromptBuilder promptBuilder,
-                                CompactionPipeline compactionPipeline,
+                                ContextCompressionOrchestrator compactionPipeline,
                                 TokenBudget tokenBudget,
                                 AgentPattern pattern) {
         this.llmClient = llmClient;

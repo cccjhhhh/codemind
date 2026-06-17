@@ -1,6 +1,5 @@
 package com.codemind.context;
 
-import com.codemind.context.Compactor;
 import com.codemind.llm.Message;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

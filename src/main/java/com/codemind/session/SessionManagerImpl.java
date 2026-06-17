@@ -1,8 +1,6 @@
 package com.codemind.session;
 
 import com.codemind.llm.Message;
-import com.codemind.session.SessionContext;
-import com.codemind.session.SessionManager;
 import com.codemind.session.dto.SessionInfoDto;
 import com.codemind.session.dto.SessionMessageDto;
 import com.codemind.session.dto.SessionSnapshotDto;

@@ -1,52 +1,39 @@
 package com.codemind.bootstrap;
 
+import com.codemind.agent.AgentLoop;
+import com.codemind.agent.SystemPromptBuilder;
+import com.codemind.agent.engine.TokenBudget;
+import com.codemind.config.Settings;
+import com.codemind.config.SettingsLoader;
+import com.codemind.context.ContextCompressionOrchestrator;
+import com.codemind.frontend.cli.CLIPermissionPrompter;
+import com.codemind.frontend.cli.DefaultOutputFormatter;
 import com.codemind.llm.LLMClient;
+import com.codemind.llm.ModelFactory;
+import com.codemind.llm.ModelManager;
 import com.codemind.mcp.*;
 import com.codemind.safety.PermissionGate;
+import com.codemind.safety.PermissionGateImpl;
+import com.codemind.safety.PermissionGateImpl.PermissionRule;
 import com.codemind.safety.PermissionLevel;
 import com.codemind.session.SessionContext;
 import com.codemind.session.SessionManager;
-import com.codemind.skill.SkillDefinition;
-import com.codemind.tool.spi.Tool;
-import com.codemind.tool.ToolRegistry;
-import com.codemind.agent.AgentLoop;
-import com.codemind.agent.engine.TokenBudget;
-import com.codemind.agent.SystemPromptBuilder;
-import com.codemind.frontend.cli.CLIPermissionPrompter;
-import com.codemind.frontend.cli.DefaultOutputFormatter;
-import com.codemind.config.Settings;
-import com.codemind.config.SettingsLoader;
-import com.codemind.tool.hook.MetricsHook;
-import com.codemind.tool.hook.PermissionPreHook;
-import com.codemind.tool.hook.SafetyPreHook;
-import com.codemind.tool.hook.TruncationHook;
-import com.codemind.llm.ModelFactory;
-import com.codemind.llm.ModelManager;
-import com.codemind.mcp.McpClientFactoryImpl;
-import com.codemind.mcp.McpConfigLoader;
-import com.codemind.mcp.McpToolAdapterImpl;
-import com.codemind.mcp.McpToolRegistry;
-import com.codemind.safety.PermissionGateImpl;
-import com.codemind.safety.PermissionGateImpl.PermissionRule;
-import com.codemind.session.CompactionPipeline;
 import com.codemind.session.SessionManagerImpl;
 import com.codemind.session.SlidingWindowContextManager;
 import com.codemind.skill.ClasspathSkillProvider;
 import com.codemind.skill.DirectorySkillProvider;
+import com.codemind.skill.SkillDefinition;
 import com.codemind.skill.SkillRegistry;
 import com.codemind.skill.routing.ConfidenceSkillRouter;
 import com.codemind.skill.routing.SkillRouter;
+import com.codemind.tool.ToolRegistry;
 import com.codemind.tool.ToolRegistryImpl;
-import com.codemind.tool.impl.BashTool;
-import com.codemind.tool.impl.ReadTool;
-import com.codemind.tool.impl.WriteTool;
-import com.codemind.tool.impl.EditTool;
-import com.codemind.tool.impl.GrepTool;
-import com.codemind.tool.impl.GlobTool;
-import com.codemind.tool.impl.WebFetchTool;
-import com.codemind.tool.impl.TodoTool;
-import com.codemind.tool.impl.TaskTool;
-import com.codemind.tool.impl.LoadSkillTool;
+import com.codemind.tool.hook.MetricsHook;
+import com.codemind.tool.hook.PermissionPreHook;
+import com.codemind.tool.hook.SafetyPreHook;
+import com.codemind.tool.hook.TruncationHook;
+import com.codemind.tool.impl.*;
+import com.codemind.tool.spi.Tool;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -73,7 +60,7 @@ public class CodeMindBootstrapper {
         PermissionGateImpl permissionGate = new PermissionGateImpl(prompter);
 
         // 2. 工具
-        ToolRegistryImpl toolRegistry = new ToolRegistryImpl(permissionGate);
+        ToolRegistryImpl toolRegistry = new ToolRegistryImpl();
         toolRegistry.register(new ReadTool());
         toolRegistry.register(new WriteTool());
         toolRegistry.register(new EditTool());
@@ -153,7 +140,7 @@ public class CodeMindBootstrapper {
         // 10. 创建 CompactionPipeline
         Settings.CompactionConfig compCfg = settings.getContext().getCompaction();
         Path spillDirResolved = Path.of(truncationCfg.getSpillDir());
-        CompactionPipeline compactionPipeline = new CompactionPipeline(
+        ContextCompressionOrchestrator compactionPipeline = ContextCompressionOrchestrator.createDefault(
             compCfg.getMaxMessagesBeforeSnip(),
             compCfg.getKeepRecentToolResults(),
             compCfg.getBudgetMaxBytes(),

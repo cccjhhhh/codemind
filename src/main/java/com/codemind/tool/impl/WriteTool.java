@@ -1,7 +1,7 @@
 package com.codemind.tool.impl;
 
-import com.codemind.tool.spi.Tool;
 import com.codemind.tool.ToolResult;
+import com.codemind.tool.spi.Tool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -26,14 +26,6 @@ public class WriteTool implements Tool {
     @Override
     public String getDescription() {
         return "将内容写入指定文件，支持覆盖和追加模式";
-    }
-    
-    /**
-     * 向后兼容：旧工具名
-     */
-    @Override
-    public java.util.Optional<String> getDeprecatedName() {
-        return java.util.Optional.of("write_file");
     }
     
     @Override

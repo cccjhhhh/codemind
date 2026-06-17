@@ -1,38 +1,28 @@
 package com.codemind.tool;
 
 import com.codemind.llm.ToolDefinition;
-import com.codemind.safety.PermissionGate;
+import com.codemind.skill.SkillDefinition;
 import com.codemind.tool.spi.Tool;
 import com.codemind.tool.spi.ToolHook;
-import com.codemind.tool.ToolRegistry;
-import com.codemind.tool.ToolResult;
-import com.codemind.skill.SkillDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public class ToolRegistryImpl implements ToolRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(ToolRegistryImpl.class);
     private final Map<String, Tool> tools = new ConcurrentHashMap<>();
-    private final Map<String, String> deprecatedToCanonical = new ConcurrentHashMap<>();
     private final List<ToolHook> hooks = new CopyOnWriteArrayList<>();
-    private final PermissionGate permissionGate;
 
-    public ToolRegistryImpl(PermissionGate permissionGate) {
-        this.permissionGate = permissionGate;
+    public ToolRegistryImpl() {
     }
 
     @Override
     public void register(Tool tool) {
         tools.put(tool.getName(), tool);
-        tool.getDeprecatedName().ifPresent(deprecatedName -> {
-            deprecatedToCanonical.put(deprecatedName, tool.getName());
-            tools.put(deprecatedName, tool);
-        });
     }
 
     @Override
@@ -53,10 +43,7 @@ public class ToolRegistryImpl implements ToolRegistry {
     }
 
     private Tool resolveTool(String name) {
-        Tool tool = tools.get(name);
-        if (tool != null) return tool;
-        String canonicalName = deprecatedToCanonical.get(name);
-        return canonicalName != null ? tools.get(canonicalName) : null;
+        return tools.get(name);
     }
 
     @Override

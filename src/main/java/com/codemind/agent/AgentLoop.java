@@ -1,19 +1,18 @@
 package com.codemind.agent;
 
-import com.codemind.llm.Message;
-import com.codemind.session.SessionContext;
-import com.codemind.agent.engine.WorkflowOrchestrator;
-import com.codemind.agent.spi.AgentResult;
 import com.codemind.agent.engine.TokenBudget;
-import com.codemind.skill.SkillRouteDto;
-import com.codemind.agent.SystemPromptBuilder;
-import com.codemind.safety.SafetyChecker;
-import com.codemind.session.CompactionPipeline;
-import com.codemind.skill.routing.SkillRouter;
-import com.codemind.frontend.output.spi.OutputFormatter;
+import com.codemind.agent.engine.WorkflowOrchestrator;
 import com.codemind.agent.pattern.react.ReactAgentPattern;
+import com.codemind.agent.spi.AgentResult;
+import com.codemind.context.ContextCompressionOrchestrator;
+import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.LLMClient;
+import com.codemind.llm.Message;
 import com.codemind.safety.PermissionGate;
+import com.codemind.safety.SafetyChecker;
+import com.codemind.session.SessionContext;
+import com.codemind.skill.SkillRouteDto;
+import com.codemind.skill.routing.SkillRouter;
 import com.codemind.tool.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +39,7 @@ public class AgentLoop {
                      int maxIterations, int maxExecutionTimeSeconds,
                      int llmStreamingTimeoutSeconds,
                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder,
-                     CompactionPipeline compactionPipeline, TokenBudget tokenBudget) {
+                     ContextCompressionOrchestrator compactionPipeline, TokenBudget tokenBudget) {
         this.permissionGate = permissionGate;
         this.skillRouter = skillRouter;
         this.orchestrator = new WorkflowOrchestrator(
