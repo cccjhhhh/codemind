@@ -10,19 +10,13 @@ import com.codemind.agent.statemachine.pattern.ReactState;
 import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.LLMClient;
-import com.codemind.llm.LLMResponse;
 import com.codemind.llm.Message;
-import com.codemind.llm.ToolCall;
 import com.codemind.safety.SafetyChecker;
 import com.codemind.session.SessionContext;
 import com.codemind.tool.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -35,8 +29,9 @@ import java.util.function.Consumer;
  * 职责：
  * 1. 持有全部 Handler 实例和 Handler 映射表
  * 2. 驱动 execute() 主循环：超时检查 → 熔断 → 分发 → 计数
- * 3. 持有跨请求的文件内容缓存 (LRU) 和 compactHistory L4 摘要方法
+ * 3. 持有跨请求的文件内容缓存 (LRU)
  * 4. 处理 COMPLETE/ERROR/MAX_ITERATIONS/USER_INTERRUPT 终止态
+ * 5. L4 摘要委托给 {@link ContextCompressionOrchestrator#summarize}
  *
  * 设计原则：
  * - AgentLoop 不再包含执行逻辑，只做输入验证和 skill 路由
@@ -95,7 +90,9 @@ public class WorkflowOrchestrator {
         this.handlers = pattern.createHandlers(
             llmClient, toolRegistry, outputFormatter,
             compactionPipeline, tokenBudget, promptBuilder,
-            this::compactForHandler, fileContentCache, llmStreamingTimeoutSeconds);
+            state -> compactionPipeline.summarize(
+                state.sessionContext, state.startTime, fileContentCache),
+            fileContentCache, llmStreamingTimeoutSeconds);
     }
 
     // ==================== getter（供 AgentLoop.createSubAgent 使用） ====================
@@ -167,109 +164,6 @@ public class WorkflowOrchestrator {
             && (System.currentTimeMillis() - startTime) >= maxExecutionTimeMs;
     }
 
-    // ==================== L4 摘要 (compactHistory) ====================
-
-    /**
-     * 全量 L4 摘要 — 供 CompactHandler/LoopBreakHandler/ThinkHandler 调用。
-     */
-    String compactHistory(SessionContext context, long startTime) {
-        try {
-            List<Message> messages = context.getManagedHistory();
-            if (messages.isEmpty()) return null;
-
-            // 保存 transcript
-            if (compactionPipeline != null) {
-                Path transcriptDir = Path.of(".codemind", "transcripts");
-                Files.createDirectories(transcriptDir);
-                String ts = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-                Path transcriptPath = transcriptDir.resolve(ts + ".jsonl");
-                Files.writeString(transcriptPath, messages.toString());
-            }
-
-            // 构建摘要 prompt
-            String conversation = messages.toString();
-            if (conversation.length() > 500_000) {
-                conversation = conversation.substring(conversation.length() - 500_000);
-            }
-
-            // 从消息历史中提取 Read 工具的文件内容
-            StringBuilder readFilesSection = new StringBuilder();
-            readFilesSection.append("\n\n=== Read Files (full contents that must be preserved) ===\n");
-            int readCount = 0;
-            for (int i = 0; i < messages.size(); i++) {
-                Message msg = messages.get(i);
-                if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
-                    for (ToolCall tc : msg.getToolCalls()) {
-                        if ("Read".equals(tc.getName())) {
-                            String path = tc.getArguments() != null
-                                ? (String) tc.getArguments().get("path") : "?";
-                            String expectedId = tc.getId();
-                            for (int j = i + 1; j < messages.size(); j++) {
-                                Message result = messages.get(j);
-                                if (result.getRole() == Message.Role.TOOL
-                                        && expectedId.equals(result.getToolCallId())) {
-                                    readFilesSection.append("\n--- ").append(path).append(" ---\n");
-                                    readFilesSection.append(result.getContent()).append("\n");
-                                    readCount++;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if (readCount == 0) {
-                readFilesSection.setLength(0);
-            }
-
-            String cachedFiles = getCachedFileContentForPrompt();
-
-            String prompt = "Summarize this coding-agent conversation so work can continue.\n"
-                + "Preserve:\n"
-                + "1. Current goal / 当前目标\n"
-                + "2. Key findings and decisions / 关键发现与决策\n"
-                + "3. Files read and their KEY CONTENTS — include ACTUAL SOURCE CODE for each file read (function signatures, class declarations, method bodies, important logic) / 已读文件及其关键内容 — 必须包含实际源代码\n"
-                + "4. Files changed and what was modified / 已改文件及修改内容\n"
-                + "5. Remaining work / 剩余工作\n"
-                + "6. User constraints and preferences / 用户约束\n\n"
-                + "IMPORTANT: Your summary MUST include actual source code details for ALL files that were read. "
-                + "The agent must be able to continue work WITHOUT re-reading any files. "
-                + "Include file paths, class/interface declarations, method signatures, and key logic.\n\n"
-                + "At the end of this prompt you will find a section called 'Read Files' or 'Cached File Contents'. "
-                + "INCLUDE ALL file contents from that section verbatim in your summary.\n\n"
-                + "Conversation:\n" + conversation
-                + readFilesSection.toString()
-                + cachedFiles;
-
-            // 检查超时余量（至少留 10 秒）
-            long elapsed = System.currentTimeMillis() - startTime;
-            if (maxExecutionTimeMs > 0 && elapsed > maxExecutionTimeMs - 10_000) {
-                log.warn("执行时间不足，跳过 L4 摘要");
-                return null;
-            }
-
-            LLMResponse response = llmClient.chat(List.of(
-                Message.system("You are a conversation summarizer."),
-                Message.user(prompt)
-            ));
-
-            if (response.getContent() == null || response.getContent().isBlank()) {
-                log.warn("L4 摘要返回空");
-                return null;
-            }
-
-            return response.getContent();
-
-        } catch (Exception e) {
-            log.error("L4 摘要失败: {}", e.getMessage());
-            return null;
-        }
-    }
-
-    private String compactForHandler(ExecutionState state) {
-        return compactHistory(state.sessionContext, state.startTime);
-    }
-
     // ==================== 文件内容缓存 ====================
 
     private Map<String, String> createFileContentCache() {
@@ -281,19 +175,6 @@ public class WorkflowOrchestrator {
                 }
             }
         );
-    }
-
-    private String getCachedFileContentForPrompt() {
-        if (fileContentCache.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder(
-            "\n\n=== Read Files (guaranteed full content, do not omit) ===\n");
-        synchronized (fileContentCache) {
-            for (Map.Entry<String, String> entry : fileContentCache.entrySet()) {
-                sb.append("\n--- ").append(entry.getKey()).append(" ---\n");
-                sb.append(entry.getValue()).append("\n");
-            }
-        }
-        return sb.toString();
     }
 
 }

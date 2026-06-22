@@ -1,5 +1,7 @@
 package com.codemind.agent.statemachine;
 
+import com.codemind.agent.statemachine.pattern.ReactState;
+
 /**
  * Agent 恢复 / 重试原因 — 非正常流转信号，由状态机统一处理。
  *
@@ -13,7 +15,7 @@ package com.codemind.agent.statemachine;
  *   <li>{@link #RECOVERY_COMPACT} — 空结果或 ContextLengthException，触发全量摘要</li>
  * </ul>
  *
- * <p>正常流转状态见 {@link com.codemind.agent.react.ReactState}，
+ * <p>正常流转状态见 {@link ReactState 等范式模板}，
  * 终止态见 {@link TerminalState}。</p>
  */
 public enum ContinueReason {

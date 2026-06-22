@@ -137,7 +137,15 @@ public class CodeMindBootstrapper {
         ));
         session.setSystemMessage(promptBuilder.build(session));
 
-        // 10. 创建 CompactionPipeline
+        // 10. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
+        int effectiveMaxIterations = settings.getAgent().getMaxIterations();
+        int effectiveTimeout = settings.getAgent().getTimeoutSeconds();
+        int effectiveLlmStreamingTimeout = settings.getAgent().getLlmStreamingTimeoutSeconds();
+        if (maxIterations != 50) effectiveMaxIterations = maxIterations;
+        if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
+        if (llmStreamingTimeoutSeconds != DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS) effectiveLlmStreamingTimeout = llmStreamingTimeoutSeconds;
+
+        // 11. 创建 CompactionPipeline（依赖 effectiveTimeout 用于 L4 超时检查）
         Settings.CompactionConfig compCfg = settings.getContext().getCompaction();
         Path spillDirResolved = Path.of(truncationCfg.getSpillDir());
         ContextCompressionOrchestrator compactionPipeline = ContextCompressionOrchestrator.createDefault(
@@ -147,23 +155,17 @@ public class CodeMindBootstrapper {
             spillDirResolved,
             truncationCfg.getSpillThresholdChars(),
             session.getSessionId(),
-            compCfg.isSaveTranscripts()
+            compCfg.isSaveTranscripts(),
+            llmClient,
+            effectiveTimeout
         );
 
-        // 11. 创建 TokenBudget
+        // 12. 创建 TokenBudget
         TokenBudget tokenBudget = new TokenBudget(
             contextManager.getTokenCountService(),
             contextManager.getReservedResponseTokens(),
             settings.getContext().getWindow().getTargetRatio()
         );
-
-        // 12. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
-        int effectiveMaxIterations = settings.getAgent().getMaxIterations();
-        int effectiveTimeout = settings.getAgent().getTimeoutSeconds();
-        int effectiveLlmStreamingTimeout = settings.getAgent().getLlmStreamingTimeoutSeconds();
-        if (maxIterations != 50) effectiveMaxIterations = maxIterations;
-        if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
-        if (llmStreamingTimeoutSeconds != DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS) effectiveLlmStreamingTimeout = llmStreamingTimeoutSeconds;
 
         // MCP 初始化 — 使用 McpToolRegistry 管理 MCP 工具生命周期
         // 同时注册到主 ToolRegistry 以获得完整 Hook 链
