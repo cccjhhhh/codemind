@@ -74,7 +74,7 @@ public class L4SummaryCompactor implements Compactor {
             LLMResponse response = llmClient.chat(List.of(
                 Message.system("You are a conversation summarizer."),
                 Message.user(prompt)
-            ));
+            ), 65536);
 
             if (response.getContent() == null || response.getContent().isBlank()) {
                 log.warn("L4 摘要返回空");

@@ -48,9 +48,14 @@ public class OpenAIClient implements LLMClient {
     
     @Override
     public LLMResponse chat(List<Message> messages) {
+        return chat(messages, this.maxTokens);
+    }
+
+    @Override
+    public LLMResponse chat(List<Message> messages, int maxTokens) {
         try {
             String messagesJson = buildMessagesJson(messages);
-            RequestBody body = buildRequestBody(messagesJson, null, false);
+            RequestBody body = buildRequestBody(messagesJson, null, false, maxTokens);
             
             Request request = new Request.Builder()
                 .url(baseUrl + "/chat/completions")
@@ -77,7 +82,7 @@ public class OpenAIClient implements LLMClient {
     public LLMResponse chatWithTools(List<Message> messages, List<ToolDefinition> tools) {
         try {
             String messagesJson = buildMessagesJson(messages);
-            RequestBody body = buildRequestBody(messagesJson, tools, false);
+            RequestBody body = buildRequestBody(messagesJson, tools, false, this.maxTokens);
             
             Request request = new Request.Builder()
                 .url(baseUrl + "/chat/completions")
@@ -108,9 +113,15 @@ public class OpenAIClient implements LLMClient {
     @Override
     public void chatStreamWithTools(List<Message> messages, List<ToolDefinition> tools, 
                                      StreamHandler handler) {
+        chatStreamWithTools(messages, tools, handler, this.maxTokens);
+    }
+
+    @Override
+    public void chatStreamWithTools(List<Message> messages, List<ToolDefinition> tools,
+                                     StreamHandler handler, int maxTokens) {
         try {
             String messagesJson = buildMessagesJson(messages);
-            RequestBody body = buildRequestBody(messagesJson, tools, true);
+            RequestBody body = buildRequestBody(messagesJson, tools, true, maxTokens);
             
             Request request = new Request.Builder()
                 .url(baseUrl + "/chat/completions")
@@ -345,12 +356,15 @@ public class OpenAIClient implements LLMClient {
     
     /**
      * 构建请求体
+     *
+     * @param maxTokens max_tokens 值，传 -1 使用客户端默认值（this.maxTokens）
      */
     private RequestBody buildRequestBody(String messagesJson, List<ToolDefinition> tools, 
-                                          boolean stream) throws Exception {
+                                          boolean stream, int maxTokens) throws Exception {
         ObjectNode body = MAPPER.createObjectNode();
+        int effectiveMaxTokens = maxTokens > 0 ? maxTokens : this.maxTokens;
         body.put("model", model);
-        body.put("max_tokens", maxTokens);
+        body.put("max_tokens", effectiveMaxTokens);
         body.put("temperature", temperature);
         body.put("stream", stream);
         body.set("messages", MAPPER.readTree(messagesJson));

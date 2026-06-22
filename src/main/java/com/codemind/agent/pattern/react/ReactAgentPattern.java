@@ -61,7 +61,7 @@ public class ReactAgentPattern implements AgentPattern {
 
         // 恢复处理器 — 复用 recovery 包中的通用 Handler
         map.put(ContinueReason.RECOVERY_COMPACT, new CompactHandler(compacter));
-        map.put(ContinueReason.LOOP_DETECTED, new LoopBreakHandler(outputFormatter, compacter));
+        map.put(ContinueReason.LOOP_DETECTED, new LoopBreakHandler(outputFormatter));
         map.put(ContinueReason.TOKEN_BUDGET_CONTINUE, new BudgetHandler(outputFormatter));
         map.put(ContinueReason.RECOVERY_ESCALATE, new EscalateHandler());
         map.put(ContinueReason.CONTINUATION, new ContinuationHandler());

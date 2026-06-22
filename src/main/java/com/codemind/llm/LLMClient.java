@@ -10,9 +10,14 @@ import java.util.List;
 public interface LLMClient {
     
     /**
-     * 同步调用 LLM
+     * 同步调用 LLM（使用默认 max_tokens）
      */
     LLMResponse chat(List<Message> messages);
+    
+    /**
+     * 同步调用 LLM（指定 max_tokens，覆盖客户端默认值）
+     */
+    LLMResponse chat(List<Message> messages, int maxTokens);
     
     /**
      * 流式调用 LLM（仅文本，无工具调用）
@@ -20,7 +25,7 @@ public interface LLMClient {
     void chatStream(List<Message> messages, StreamHandler handler);
     
     /**
-     * 流式调用 LLM（支持工具调用）
+     * 流式调用 LLM（支持工具调用，使用默认 max_tokens）
      * 
      * 通过 handler 回调流式事件，包括：
      * - TEXT_DELTA: 文本增量
@@ -32,6 +37,12 @@ public interface LLMClient {
      */
     void chatStreamWithTools(List<Message> messages, List<ToolDefinition> tools, 
                             StreamHandler handler);
+    
+    /**
+     * 流式调用 LLM（支持工具调用，指定 max_tokens 覆盖客户端默认值）
+     */
+    void chatStreamWithTools(List<Message> messages, List<ToolDefinition> tools,
+                            StreamHandler handler, int maxTokens);
     
     /**
      * 支持 Function Calling 的同步调用

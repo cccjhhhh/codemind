@@ -116,8 +116,15 @@ public class ThinkHandler implements StateHandler {
         // 4. 输出 thinking 提示
         outputHandler.accept(outputFormatter.formatThinkingStart());
 
-        // 5. LLM 流式调用
-        AgentTurnResult turnResult = runSingleTurn(messages, tools, outputHandler);
+        // 5. LLM 流式调用（使用 RecoveryManager 中的当前 max_tokens）
+        int maxTokens = state.recoveryManager.getCurrentMaxTokens();
+        AgentTurnResult turnResult = runSingleTurn(messages, tools, outputHandler, maxTokens);
+
+        // 5a. 瞬态错误/超时 → 指数退避后重试
+        if (turnResult.needsBackoff) {
+            state.recoveryManager.record529();
+            return ContinueReason.RETRY_BACKOFF;
+        }
 
         // 6. 空结果处理
         if (!turnResult.hasToolCalls() && isEmpty(turnResult.fullText)) {
@@ -179,6 +186,7 @@ public class ThinkHandler implements StateHandler {
             if (summary != null && !summary.isEmpty()) {
                 state.sessionContext.clearHistory();
                 state.sessionContext.addMessage(Message.user("[Compacted]\n\n" + summary));
+                state.recoveryManager.setAttemptedCompact(true);
                 if (compactionPipeline != null) compactionPipeline.resetFailures();
             } else if (tokenBudget.needsCompact(state.sessionContext.getHistory())) {
                 return ContinueReason.TOKEN_BUDGET_CONTINUE;
@@ -195,92 +203,81 @@ public class ThinkHandler implements StateHandler {
     // ==================== LLM 调用 ====================
 
     private AgentTurnResult runSingleTurn(List<Message> history, List<ToolDefinition> tools,
-                                          Consumer<String> outputHandler) {
-        int maxAttempts = 2;
+                                          Consumer<String> outputHandler, int maxTokens) {
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> fullText = new AtomicReference<>("");
+        AtomicReference<List<ToolCall>> toolCalls = new AtomicReference<>(new ArrayList<>());
+        AtomicReference<String> stopReason = new AtomicReference<>(null);
+        AtomicReference<Exception> error = new AtomicReference<>(null);
+        AtomicReference<Boolean> firstDelta = new AtomicReference<>(true);
+        AtomicBoolean cancelled = new AtomicBoolean(false);
 
-        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-            CountDownLatch latch = new CountDownLatch(1);
-            AtomicReference<String> fullText = new AtomicReference<>("");
-            AtomicReference<List<ToolCall>> toolCalls = new AtomicReference<>(new ArrayList<>());
-            AtomicReference<String> stopReason = new AtomicReference<>(null);
-            AtomicReference<Exception> error = new AtomicReference<>(null);
-            AtomicReference<Boolean> firstDelta = new AtomicReference<>(true);
-            AtomicBoolean cancelled = new AtomicBoolean(false);
-
-            llmClient.chatStreamWithTools(history, tools, new LLMClient.StreamHandler() {
-                @Override
-                public void onEvent(StreamEvent event) {
-                    if (cancelled.get()) return;
-                    switch (event.getType()) {
-                        case TEXT_DELTA:
-                            if (firstDelta.compareAndSet(true, false)) {
-                                outputHandler.accept(outputFormatter.formatThinkingEnd());
-                            }
-                            outputHandler.accept(event.getTextDelta());
-                            break;
-                        case MESSAGE_COMPLETE:
-                            fullText.set(event.getFullText());
-                            toolCalls.set(event.getToolCalls() != null ? event.getToolCalls() : new ArrayList<>());
-                            stopReason.set(event.getFinishReason());
-                            latch.countDown();
-                            break;
-                        case ERROR:
-                            error.set(event.getError());
-                            latch.countDown();
-                            break;
-                        default:
-                            break;
-                    }
+        llmClient.chatStreamWithTools(history, tools, new LLMClient.StreamHandler() {
+            @Override
+            public void onEvent(StreamEvent event) {
+                if (cancelled.get()) return;
+                switch (event.getType()) {
+                    case TEXT_DELTA:
+                        if (firstDelta.compareAndSet(true, false)) {
+                            outputHandler.accept(outputFormatter.formatThinkingEnd());
+                        }
+                        outputHandler.accept(event.getTextDelta());
+                        break;
+                    case MESSAGE_COMPLETE:
+                        fullText.set(event.getFullText());
+                        toolCalls.set(event.getToolCalls() != null ? event.getToolCalls() : new ArrayList<>());
+                        stopReason.set(event.getFinishReason());
+                        latch.countDown();
+                        break;
+                    case ERROR:
+                        error.set(event.getError());
+                        latch.countDown();
+                        break;
+                    default:
+                        break;
                 }
-
-                @Override
-                public void onError(Exception e) {
-                    if (cancelled.get()) return;
-                    error.set(e);
-                    latch.countDown();
-                }
-            });
-
-            try {
-                if (!latch.await(llmStreamingTimeoutSeconds, TimeUnit.SECONDS)) {
-                    cancelled.set(true);
-                    if (attempt < maxAttempts) {
-                        log.warn("LLM 流式响应超时（attempt {}/{}），重试中...", attempt, maxAttempts);
-                        continue;
-                    }
-                    log.error("LLM 流式响应超时（attempt {}/{}），放弃", attempt, maxAttempts);
-                    return new AgentTurnResult("", new ArrayList<>());
-                }
-            } catch (InterruptedException e) {
-                cancelled.set(true);
-                Thread.currentThread().interrupt();
-                return new AgentTurnResult("", new ArrayList<>());
             }
 
-            if (error.get() != null) {
-                cancelled.set(true);
-                Exception ex = error.get();
-                if (isContextLengthError(ex)) {
-                    log.warn("上下文溢出，需要压缩后重试: {}", ex.getMessage());
-                    return new AgentTurnResult("", new ArrayList<>());
-                }
-                if (attempt < maxAttempts && shouldRetryLLMError(ex)) {
-                    log.warn("LLM 调用失败（attempt {}/{}），重试中: {}",
-                        attempt, maxAttempts, ex.getMessage());
-                    try { Thread.sleep(1000L * attempt); } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        return new AgentTurnResult("", new ArrayList<>());
-                    }
-                    continue;
-                }
-                log.error("LLM 调用失败: {} - {}", ex.getClass().getName(), ex.getMessage());
-                return new AgentTurnResult("", new ArrayList<>());
+            @Override
+            public void onError(Exception e) {
+                if (cancelled.get()) return;
+                error.set(e);
+                latch.countDown();
             }
+        }, maxTokens);
 
-            return new AgentTurnResult(fullText.get(), toolCalls.get(), stopReason.get());
+        try {
+            if (!latch.await(llmStreamingTimeoutSeconds, TimeUnit.SECONDS)) {
+                cancelled.set(true);
+                log.warn("LLM 流式响应超时，触发 RETRY_BACKOFF");
+                AgentTurnResult r = new AgentTurnResult("", new ArrayList<>());
+                r.needsBackoff = true;
+                return r;
+            }
+        } catch (InterruptedException e) {
+            cancelled.set(true);
+            Thread.currentThread().interrupt();
+            return new AgentTurnResult("", new ArrayList<>());
         }
 
-        return new AgentTurnResult("", new ArrayList<>());
+        if (error.get() != null) {
+            cancelled.set(true);
+            Exception ex = error.get();
+            if (isContextLengthError(ex)) {
+                log.warn("上下文溢出，需要压缩后重试: {}", ex.getMessage());
+                return new AgentTurnResult("", new ArrayList<>());
+            }
+            if (shouldRetryLLMError(ex)) {
+                log.warn("LLM 瞬态错误，触发 RETRY_BACKOFF: {}", ex.getMessage());
+                AgentTurnResult r = new AgentTurnResult("", new ArrayList<>());
+                r.needsBackoff = true;
+                return r;
+            }
+            log.error("LLM 调用失败: {} - {}", ex.getClass().getName(), ex.getMessage());
+            return new AgentTurnResult("", new ArrayList<>());
+        }
+
+        return new AgentTurnResult(fullText.get(), toolCalls.get(), stopReason.get());
     }
 
     // ==================== 辅助方法 ====================
@@ -331,6 +328,7 @@ public class ThinkHandler implements StateHandler {
         final String fullText;
         final List<ToolCall> toolCalls;
         final String stopReason;
+        boolean needsBackoff;
 
         AgentTurnResult(String fullText, List<ToolCall> toolCalls, String stopReason) {
             this.fullText = fullText;

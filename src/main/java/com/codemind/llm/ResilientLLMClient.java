@@ -91,6 +91,14 @@ public class ResilientLLMClient implements LLMClient {
     }
 
     @Override
+    public LLMResponse chat(List<Message> messages, int maxTokens) {
+        return executeWithRetry(() -> {
+            acquirePermit();
+            return delegate.chat(messages, maxTokens);
+        });
+    }
+
+    @Override
     public void chatStream(List<Message> messages, StreamHandler handler) {
         // 流式调用：异步执行，同步等待模式
         executeWithRetry(() -> {
@@ -106,6 +114,16 @@ public class ResilientLLMClient implements LLMClient {
         executeWithRetry(() -> {
             acquirePermit();
             delegate.chatStreamWithTools(messages, tools, handler);
+            return null;
+        });
+    }
+
+    @Override
+    public void chatStreamWithTools(List<Message> messages, List<ToolDefinition> tools,
+                                    StreamHandler handler, int maxTokens) {
+        executeWithRetry(() -> {
+            acquirePermit();
+            delegate.chatStreamWithTools(messages, tools, handler, maxTokens);
             return null;
         });
     }
