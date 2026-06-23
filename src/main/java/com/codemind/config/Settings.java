@@ -94,8 +94,8 @@ public class Settings {
         private double compactOnRatio = 0.70;
         private int maxConsecutiveFailures = 3;
         private boolean saveTranscripts = true;
-        private int compressOnRounds = 20;
-        private int l1MaxRounds = 15;
+        private int compressOnRounds = 25;
+        private int l1MaxRounds = 50;
         private int l2MaxCompactions = 30;
         private int l2KeepRecentRounds = 3;
 
