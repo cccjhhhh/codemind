@@ -1,5 +1,6 @@
 package com.codemind.context;
 
+import com.codemind.agent.engine.TokenBudget;
 import com.codemind.llm.LLMClient;
 import com.codemind.llm.Message;
 import com.codemind.session.SessionContext;
@@ -34,16 +35,21 @@ public class ContextCompressionOrchestrator {
     private final L4SummaryCompactor l4SummaryCompactor;
     private final long maxExecutionTimeMs;
     private final int compressOnRounds;
+    private final double compactOnRatio;        // token 百分比触发阈值（0.70 = 70%）
+    private final TokenBudget tokenBudget;      // 用于百分比检查（可为 null）
     private int consecutiveFailures = 0;
 
     public ContextCompressionOrchestrator(List<Compactor> compactors, L4SummaryCompactor l4SummaryCompactor,
-                                           long maxExecutionTimeMs, int compressOnRounds) {
+                                           long maxExecutionTimeMs, int compressOnRounds,
+                                           double compactOnRatio, TokenBudget tokenBudget) {
         this.compactors = compactors.stream()
                 .sorted(Comparator.comparingInt(Compactor::order))
                 .toList();
         this.l4SummaryCompactor = l4SummaryCompactor;
         this.maxExecutionTimeMs = maxExecutionTimeMs;
         this.compressOnRounds = compressOnRounds;
+        this.compactOnRatio = compactOnRatio;
+        this.tokenBudget = tokenBudget;
     }
 
     /**
@@ -60,6 +66,8 @@ public class ContextCompressionOrchestrator {
      * @param llmClient              LLM 客户端（用于 L4 摘要）
      * @param maxExecutionTimeSeconds 最大执行时间（秒），用于 L4 摘要超时检查
      * @param compressOnRounds       轮次触发阈值
+     * @param compactOnRatio         token 百分比触发阈值（0.70 = 70%）
+     * @param tokenBudget            TokenBudget 实例，用于百分比检查
      */
     public static ContextCompressionOrchestrator createDefault(
             int l1MaxRounds,
@@ -72,7 +80,9 @@ public class ContextCompressionOrchestrator {
             boolean saveTranscripts,
             LLMClient llmClient,
             int maxExecutionTimeSeconds,
-            int compressOnRounds) {
+            int compressOnRounds,
+            double compactOnRatio,
+            TokenBudget tokenBudget) {
         List<Compactor> compactors = new ArrayList<>();
         compactors.add(new L3SpillCompactor(spillThresholdChars, spillDir, sessionId));
         compactors.add(new L1SnipCompactor(l1MaxRounds));
@@ -80,7 +90,8 @@ public class ContextCompressionOrchestrator {
         // L4 不加入常规管线，由 summarize() 单独触发
         L4SummaryCompactor l4 = new L4SummaryCompactor(llmClient);
         long maxExecMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
-        return new ContextCompressionOrchestrator(compactors, l4, maxExecMs, compressOnRounds);
+        return new ContextCompressionOrchestrator(compactors, l4, maxExecMs, compressOnRounds,
+                compactOnRatio, tokenBudget);
     }
 
     /**
@@ -157,7 +168,8 @@ public class ContextCompressionOrchestrator {
     /**
      * 执行 L1-L3 压缩管线。
      *
-     * <p>双触发检查：roundCount > compressOnRounds 时才执行压缩。
+     * <p>双触发检查：roundCount > compressOnRounds OR token 使用率 > compactOnRatio。
+     * 只有至少一个条件满足时才执行压缩。
      * 每次压缩后重算受保护索引，避免索引偏移。</p>
      *
      * @param messages      原始消息列表（含 system message）
@@ -165,10 +177,27 @@ public class ContextCompressionOrchestrator {
      * @return 压缩结果
      */
     public CompressionResult run(List<Message> messages, Message systemMessage) {
-        // 双触发检查：轮次触发
+        // 双触发检查
         int roundCount = countRounds(messages);
-        if (roundCount <= compressOnRounds) {
+        boolean roundTrigger = roundCount > compressOnRounds;
+        boolean tokenTrigger = false;
+        if (tokenBudget != null) {
+            double usage = tokenBudget.getUsageRatio(messages);
+            tokenTrigger = usage > compactOnRatio;
+            if (tokenTrigger) {
+                log.info("Token 百分比触发: {}% > {}% (rounds={}, triggerRounds={})",
+                        String.format("%.1f", usage * 100),
+                        String.format("%.0f", compactOnRatio * 100),
+                        roundCount, compressOnRounds);
+            }
+        }
+        if (!roundTrigger && !tokenTrigger) {
             return new CompressionResult(messages, false, false, messages.size(), messages.size());
+        }
+        if (roundTrigger) {
+            log.info("轮次触发: {} > {} (token 使用率={})",
+                    roundCount, compressOnRounds,
+                    tokenBudget != null ? String.format("%.1f%%", tokenBudget.getUsageRatio(messages) * 100) : "N/A");
         }
 
         int originalSize = messages.size();

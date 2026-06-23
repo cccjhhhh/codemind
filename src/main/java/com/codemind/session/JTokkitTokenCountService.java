@@ -43,9 +43,11 @@ public class JTokkitTokenCountService implements TokenCountService {
     // 默认上下文窗口（用于未知模型）
     private static final int DEFAULT_MAX_CONTEXT = 8192;
     
-    // DeepSeek 等兼容模型的上下文窗口
+    // 兼容模型的上下文窗口（key = 模型名，value = 最大窗口 token 数）
+    // DeepSeek V4: 200K 上下文（用户确认）
     private static final Map<String, Integer> COMPATIBLE_MODEL_CONTEXT = Map.of(
-        "deepseek-chat", 64000,
+        "deepseek", 200000,
+        "deepseek-chat", 200000,
         "deepseek-coder", 16000,
         "claude-3-opus", 200000,
         "claude-3-sonnet", 200000,
@@ -149,8 +151,8 @@ public class JTokkitTokenCountService implements TokenCountService {
         // 3. 检查是否是已知的兼容模型
         String lowerModelName = modelName.toLowerCase();
         if (lowerModelName.contains("deepseek")) {
-            int maxContext = COMPATIBLE_MODEL_CONTEXT.getOrDefault(lowerModelName, 64000);
-            LOGGER.info("DeepSeek 模型使用 cl100k_base 编码: " + modelName);
+            int maxContext = COMPATIBLE_MODEL_CONTEXT.getOrDefault(lowerModelName, 200000);
+            LOGGER.info("DeepSeek 模型使用 cl100k_base 编码: " + modelName + " (窗口: " + maxContext + ")");
             return new JTokkitTokenCountService(EncodingType.CL100K_BASE, maxContext, modelName);
         }
         

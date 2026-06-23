@@ -109,7 +109,7 @@ public class SettingsLoader {
                     target.getContext().getCompaction().setMaxConsecutiveFailures(source.getContext().getCompaction().getMaxConsecutiveFailures());
                 if (source.getContext().getCompaction().isSaveTranscripts() != true)
                     target.getContext().getCompaction().setSaveTranscripts(source.getContext().getCompaction().isSaveTranscripts());
-                if (source.getContext().getCompaction().getCompressOnRounds() != 25)
+                if (source.getContext().getCompaction().getCompressOnRounds() != 30)
                     target.getContext().getCompaction().setCompressOnRounds(source.getContext().getCompaction().getCompressOnRounds());
                 if (source.getContext().getCompaction().getL1MaxRounds() != 15)
                     target.getContext().getCompaction().setL1MaxRounds(source.getContext().getCompaction().getL1MaxRounds());

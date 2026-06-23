@@ -145,7 +145,14 @@ public class CodeMindBootstrapper {
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
         if (llmStreamingTimeoutSeconds != DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS) effectiveLlmStreamingTimeout = llmStreamingTimeoutSeconds;
 
-        // 11. 创建 CompactionPipeline（依赖 effectiveTimeout 用于 L4 超时检查）
+        // 11. 创建 TokenBudget（需在 CompactionPipeline 之前，供双触发检查使用）
+        TokenBudget tokenBudget = new TokenBudget(
+            contextManager.getTokenCountService(),
+            contextManager.getReservedResponseTokens(),
+            settings.getContext().getWindow().getTargetRatio()
+        );
+
+        // 12. 创建 CompactionPipeline（依赖 effectiveTimeout 用于 L4 超时检查）
         Settings.CompactionConfig compCfg = settings.getContext().getCompaction();
         Path spillDirResolved = Path.of(truncationCfg.getSpillDir());
         ContextCompressionOrchestrator compactionPipeline = ContextCompressionOrchestrator.createDefault(
@@ -159,17 +166,12 @@ public class CodeMindBootstrapper {
             compCfg.isSaveTranscripts(),
             llmClient,
             effectiveTimeout,
-            compCfg.getCompressOnRounds()
+            compCfg.getCompressOnRounds(),
+            compCfg.getCompactOnRatio(),
+            tokenBudget
         );
 
-        // 12. 创建 TokenBudget
-        TokenBudget tokenBudget = new TokenBudget(
-            contextManager.getTokenCountService(),
-            contextManager.getReservedResponseTokens(),
-            settings.getContext().getWindow().getTargetRatio()
-        );
-
-        // MCP 初始化 — 使用 McpToolRegistry 管理 MCP 工具生命周期
+        // 13. MCP 初始化 — 使用 McpToolRegistry 管理 MCP 工具生命周期
         // 同时注册到主 ToolRegistry 以获得完整 Hook 链
         McpToolRegistry mcpToolRegistry = new McpToolRegistry();
         try {
@@ -211,7 +213,7 @@ public class CodeMindBootstrapper {
             System.out.println("Failed to load MCP config: " + e.getMessage());
         }
 
-        // 13. Agent 循环（MCP 工具已注册到主 ToolRegistry）
+        // 14. Agent 循环（MCP 工具已注册到主 ToolRegistry）
         AgentLoop agentLoop = new AgentLoop(
             llmClient, toolRegistry, permissionGate, outputFormatter,
             effectiveMaxIterations, effectiveTimeout, effectiveLlmStreamingTimeout,
