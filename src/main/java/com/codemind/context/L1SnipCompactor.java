@@ -9,75 +9,80 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * L1 裁剪压缩器：裁剪中间旧消息。
+ * L1 轮次裁剪压缩器：砍掉最旧 N 个完整轮次。
  *
- * 保留头 N 条 + 尾 M 条，中间被裁剪的部分用一条占位消息替换。
- * 确保不拆散 ASSISTANT(tool_call) + TOOL(result) 的配对。
+ * 从最旧轮次开始，完整删除整个轮次(USER+ASSISTANT+TOOLs)。
+ * 保留至少 3 轮最新对话，确保当前工作上下文不丢失。
+ * 每次删除后重新计算轮次边界，避免旧模拟程序的索引偏移 Bug。
  */
 public class L1SnipCompactor implements Compactor {
 
     private static final Logger log = LoggerFactory.getLogger(L1SnipCompactor.class);
 
-    private final int maxMessagesBeforeSnip;
-    private final int keepHead;
+    private final int l1MaxRounds;
+    private static final int MIN_KEEP_ROUNDS = 3;
 
-    public L1SnipCompactor(int maxMessagesBeforeSnip) {
-        this(maxMessagesBeforeSnip, 3);
-    }
-
-    public L1SnipCompactor(int maxMessagesBeforeSnip, int keepHead) {
-        this.maxMessagesBeforeSnip = maxMessagesBeforeSnip;
-        this.keepHead = keepHead;
+    public L1SnipCompactor(int l1MaxRounds) {
+        this.l1MaxRounds = l1MaxRounds;
     }
 
     @Override
     public int order() {
-        return 10;
+        return 20;
     }
 
     @Override
     public List<Message> compact(List<Message> messages, Set<Integer> protectedReadIndices) {
-        if (messages.size() <= maxMessagesBeforeSnip) {
+        List<int[]> roundBounds = findRoundBounds(messages);
+        int totalRounds = roundBounds.size();
+
+        // 不足 MIN_KEEP_ROUNDS+1 轮，不做压缩
+        if (totalRounds <= MIN_KEEP_ROUNDS + 1) {
             return messages;
         }
 
-        int keepTail = maxMessagesBeforeSnip - keepHead;
-        int headEnd = keepHead;
-        int tailStart = messages.size() - keepTail;
+        int roundsToRemove = Math.min(l1MaxRounds, totalRounds - MIN_KEEP_ROUNDS);
+        List<Message> result = new ArrayList<>(messages);
 
-        // 边界保护：不拆散 ASSISTANT + TOOL 配对
-        while (headEnd > 0 && headEnd < messages.size()
-                && messages.get(headEnd).getRole() == Message.Role.TOOL) {
-            headEnd++;
-        }
-        while (tailStart > 0 && tailStart < messages.size()
-                && messages.get(tailStart).getRole() == Message.Role.TOOL) {
-            tailStart--;
-        }
-        if (headEnd > 0 && hasToolCall(messages.get(headEnd - 1))) {
-            while (headEnd < messages.size()
-                    && messages.get(headEnd).getRole() == Message.Role.TOOL) {
-                headEnd++;
+        // 逐轮删除最旧轮次，每次删除后重算边界
+        for (int removed = 0; removed < roundsToRemove; removed++) {
+            List<int[]> currentBounds = findRoundBounds(result);
+            if (currentBounds.size() <= MIN_KEEP_ROUNDS) break;
+
+            int[] oldest = currentBounds.get(0);
+            // 从后往前删除，保持索引正确
+            for (int j = oldest[1]; j >= oldest[0]; j--) {
+                result.remove(j);
             }
         }
-        if (tailStart > 0 && tailStart < messages.size()
-                && messages.get(tailStart).getRole() == Message.Role.TOOL
-                && hasToolCall(messages.get(tailStart - 1))) {
-            tailStart--;
-        }
 
-        if (headEnd >= tailStart) return messages;
-
-        int snipped = tailStart - headEnd;
-        List<Message> result = new ArrayList<>(messages.subList(0, headEnd));
-        result.add(Message.user("[snipped " + snipped + " messages]"));
-        result.addAll(messages.subList(tailStart, messages.size()));
-
-        log.debug("L1: 裁剪 {} 条消息 (总计 {}→{})", snipped, messages.size(), result.size());
+        log.debug("L1: 砍掉 {} 轮 (剩余 {} 轮)", roundsToRemove,
+            findRoundBounds(result).size());
         return result;
     }
 
-    private boolean hasToolCall(Message msg) {
-        return msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls();
+    /**
+     * 计算消息列表中 ReAct 步骤的边界。
+     * 每个步骤 = ASSISTANT(含工具调用) + 其后的连续 TOOL 结果。
+     */
+    static List<int[]> findRoundBounds(List<Message> messages) {
+        List<int[]> bounds = new ArrayList<>();
+        int i = 0;
+        if (!messages.isEmpty() && messages.get(0).getRole() == Message.Role.SYSTEM) {
+            i = 1;
+        }
+        while (i < messages.size()) {
+            if (messages.get(i).getRole() != Message.Role.ASSISTANT) {
+                i++;
+                continue;
+            }
+            int stepStart = i;
+            i++;
+            while (i < messages.size() && messages.get(i).getRole() == Message.Role.TOOL) {
+                i++;
+            }
+            bounds.add(new int[]{stepStart, i - 1});
+        }
+        return bounds;
     }
 }

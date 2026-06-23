@@ -56,7 +56,7 @@ public class CLI implements Runnable {
     private static final String PLACEHOLDER_KEY_PATTERN = "YOUR_.*_API_KEY";
 
     // 默认最大迭代次数（参考 LangChain AgentExecutor）
-    private static final int DEFAULT_MAX_ITERATIONS = 50;
+    private static final int DEFAULT_MAX_ITERATIONS = 150;
 
     // 默认超时时间（秒）
     private static final int DEFAULT_TIMEOUT_SECONDS = 300;

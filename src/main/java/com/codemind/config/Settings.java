@@ -69,7 +69,7 @@ public class Settings {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Truncation {
-        private int spillThresholdChars = 8000;
+        private int spillThresholdChars = 50000;
         private String spillDir = ".codemind/spill";
 
         public int getSpillThresholdChars() { return spillThresholdChars; }
@@ -91,9 +91,13 @@ public class Settings {
         private int maxMessagesBeforeSnip = 50;
         private int keepRecentToolResults = 3;
         private int budgetMaxBytes = 200000;
-        private double compactOnRatio = 0.9;
+        private double compactOnRatio = 0.70;
         private int maxConsecutiveFailures = 3;
         private boolean saveTranscripts = true;
+        private int compressOnRounds = 20;
+        private int l1MaxRounds = 15;
+        private int l2MaxCompactions = 30;
+        private int l2KeepRecentRounds = 3;
 
         public int getMaxMessagesBeforeSnip() { return maxMessagesBeforeSnip; }
         public void setMaxMessagesBeforeSnip(int v) { this.maxMessagesBeforeSnip = v; }
@@ -107,11 +111,19 @@ public class Settings {
         public void setMaxConsecutiveFailures(int v) { this.maxConsecutiveFailures = v; }
         public boolean isSaveTranscripts() { return saveTranscripts; }
         public void setSaveTranscripts(boolean v) { this.saveTranscripts = v; }
+        public int getCompressOnRounds() { return compressOnRounds; }
+        public void setCompressOnRounds(int v) { this.compressOnRounds = v; }
+        public int getL1MaxRounds() { return l1MaxRounds; }
+        public void setL1MaxRounds(int v) { this.l1MaxRounds = v; }
+        public int getL2MaxCompactions() { return l2MaxCompactions; }
+        public void setL2MaxCompactions(int v) { this.l2MaxCompactions = v; }
+        public int getL2KeepRecentRounds() { return l2KeepRecentRounds; }
+        public void setL2KeepRecentRounds(int v) { this.l2KeepRecentRounds = v; }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class AgentConfig {
-        private int maxIterations = 50;
+        private int maxIterations = 150;
         private int timeoutSeconds = 300;
         // 流式响应超时：复杂任务（如读取大量文件、生成架构图）需要更长时间
         // 业界标准：Claude Code 300s, OpenAI Codex 300s, LangChain 120-240s

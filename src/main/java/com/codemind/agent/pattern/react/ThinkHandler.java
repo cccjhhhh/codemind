@@ -184,8 +184,15 @@ public class ThinkHandler implements StateHandler {
         try {
             String summary = compacter.apply(state);
             if (summary != null && !summary.isEmpty()) {
+                // 保留最近 3 轮完整对话
+                List<Message> history = state.sessionContext.getHistory();
+                List<Message> recentRounds = keepLastRounds(history, 3);
+
                 state.sessionContext.clearHistory();
                 state.sessionContext.addMessage(Message.user("[Compacted]\n\n" + summary));
+                for (Message msg : recentRounds) {
+                    state.sessionContext.addMessage(msg);
+                }
                 state.recoveryManager.setAttemptedCompact(true);
                 if (compactionPipeline != null) compactionPipeline.resetFailures();
             } else if (tokenBudget.needsCompact(state.sessionContext.getHistory())) {
@@ -198,6 +205,24 @@ public class ThinkHandler implements StateHandler {
             }
         }
         return null;
+    }
+
+    /**
+     * 从消息列表中提取最近 N 个完整 ReAct 步骤。
+     * 每步骤 = ASSISTANT + 其后的 TOOL 结果。
+     */
+    private static List<Message> keepLastRounds(List<Message> messages, int n) {
+        List<int[]> bounds = ContextCompressionOrchestrator.findRoundBounds(messages);
+        if (bounds.size() <= n) return List.of();
+
+        List<Message> recent = new ArrayList<>();
+        for (int r = bounds.size() - n; r < bounds.size(); r++) {
+            int[] b = bounds.get(r);
+            for (int i = b[0]; i <= b[1]; i++) {
+                recent.add(messages.get(i));
+            }
+        }
+        return recent;
     }
 
     // ==================== LLM 调用 ====================

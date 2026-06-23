@@ -182,15 +182,30 @@ public class ActHandler implements StateHandler {
     }
 
     private void cacheReadResult(ToolCall tc, ToolResult result) {
-        if (!"Read".equals(tc.getName()) || !result.isSuccess()) return;
-        String path = tc.getArguments() != null
-            ? (String) tc.getArguments().get("path") : null;
-        if (path == null) return;
-        String content = result.getOutput();
-        if (content == null) return;
-        if (content.length() > MAX_FILE_CHARS) {
-            content = content.substring(0, MAX_FILE_CHARS) + "\n... [truncated]";
+        if (!result.isSuccess()) return;
+        String name = tc.getName();
+        if ("Read".equals(name)) {
+            String path = tc.getArguments() != null
+                ? (String) tc.getArguments().get("path") : null;
+            if (path == null) return;
+            String content = result.getOutput();
+            if (content == null) return;
+            if (content.length() > MAX_FILE_CHARS) {
+                content = content.substring(0, MAX_FILE_CHARS) + "\n... [truncated]";
+            }
+            fileContentCache.put(path, content);
+        } else if ("Grep".equals(name)) {
+            String pattern = tc.getArguments() != null
+                ? (String) tc.getArguments().get("pattern") : "";
+            String grepPath = tc.getArguments() != null
+                ? (String) tc.getArguments().get("path") : "";
+            String key = "grep:" + pattern + ":" + grepPath;
+            String content = result.getOutput();
+            if (content == null) return;
+            if (content.length() > MAX_FILE_CHARS) {
+                content = content.substring(0, MAX_FILE_CHARS) + "\n... [truncated]";
+            }
+            fileContentCache.put(key, content);
         }
-        fileContentCache.put(path, content);
     }
 }

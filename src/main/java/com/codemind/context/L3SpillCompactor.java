@@ -37,7 +37,7 @@ public class L3SpillCompactor implements Compactor {
 
     @Override
     public int order() {
-        return 30;
+        return 10;
     }
 
     @Override
@@ -53,7 +53,7 @@ public class L3SpillCompactor implements Compactor {
                 if (protectedReadIndices.contains(i)) continue;
 
                 String persistedPath = persist(msg.getContent(), "tool_result");
-                String preview = msg.getContent().substring(0, Math.min(200, msg.getContent().length()));
+                String preview = msg.getContent().substring(0, Math.min(2000, msg.getContent().length()));
                 result.set(i, Message.tool(
                         "[结果已保存](" + persistedPath + ")\n预览: " + preview,
                         msg.getToolCallId()

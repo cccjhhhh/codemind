@@ -19,10 +19,12 @@ import java.util.*;
  * 所有压缩必须经过此类。
  *
  * 执行流程：
- * 1. 一次扫描计算 Read 结果索引（protectedIndices）
- * 2. 按 order() 依次执行 L1 → L2 → L3
- * 3. L4 LLM 摘要通过 {@link #summarize} 独立触发（L4SummaryCompactor 实现 Compactor 接口）
- * 4. 返回 CompressionResult
+ * 1. 双触发检查 (round > compressOnRounds OR token > compactOnRatio)
+ * 2. 一次扫描计算受保护索引（Read + Grep）
+ * 3. 按 order() 依次执行 L3 → L1 → L2
+ * 4. 每次压缩后重算受保护索引
+ * 5. L4 LLM 摘要通过 {@link #summarize} 独立触发
+ * 6. 返回 CompressionResult
  */
 public class ContextCompressionOrchestrator {
 
@@ -31,48 +33,54 @@ public class ContextCompressionOrchestrator {
     private final List<Compactor> compactors;
     private final L4SummaryCompactor l4SummaryCompactor;
     private final long maxExecutionTimeMs;
+    private final int compressOnRounds;
     private int consecutiveFailures = 0;
 
-    public ContextCompressionOrchestrator(List<Compactor> compactors, L4SummaryCompactor l4SummaryCompactor, long maxExecutionTimeMs) {
-        // 按 order 排序，保证执行顺序
+    public ContextCompressionOrchestrator(List<Compactor> compactors, L4SummaryCompactor l4SummaryCompactor,
+                                           long maxExecutionTimeMs, int compressOnRounds) {
         this.compactors = compactors.stream()
                 .sorted(Comparator.comparingInt(Compactor::order))
                 .toList();
         this.l4SummaryCompactor = l4SummaryCompactor;
         this.maxExecutionTimeMs = maxExecutionTimeMs;
+        this.compressOnRounds = compressOnRounds;
     }
 
     /**
      * 创建默认编排器，包含 L1–L4 压缩器。
      *
-     * @param maxMessagesBeforeSnip L1 阈值
-     * @param keepRecentToolResults L2 保留数量
-     * @param budgetMaxBytes L3 预算（当前未使用，保留签名兼容性）
-     * @param spillDir L3 持久化目录
-     * @param spillThresholdChars L3 阈值
-     * @param sessionId 会话标识
-     * @param saveTranscripts 是否保存 transcripts
-     * @param llmClient LLM 客户端（用于 L4 摘要）
+     * @param l1MaxRounds           L1 最多砍轮数
+     * @param l2MaxCompactions       L2 最多缩写数
+     * @param l2KeepRecentRounds     L2 保留最近轮数
+     * @param budgetMaxBytes         L3 预算（当前未使用，保留签名兼容性）
+     * @param spillDir               L3 持久化目录
+     * @param spillThresholdChars    L3 阈值
+     * @param sessionId              会话标识
+     * @param saveTranscripts        是否保存 transcripts
+     * @param llmClient              LLM 客户端（用于 L4 摘要）
      * @param maxExecutionTimeSeconds 最大执行时间（秒），用于 L4 摘要超时检查
+     * @param compressOnRounds       轮次触发阈值
      */
     public static ContextCompressionOrchestrator createDefault(
-            int maxMessagesBeforeSnip,
-            int keepRecentToolResults,
+            int l1MaxRounds,
+            int l2MaxCompactions,
+            int l2KeepRecentRounds,
             int budgetMaxBytes,
             Path spillDir,
             int spillThresholdChars,
             String sessionId,
             boolean saveTranscripts,
             LLMClient llmClient,
-            int maxExecutionTimeSeconds) {
+            int maxExecutionTimeSeconds,
+            int compressOnRounds) {
         List<Compactor> compactors = new ArrayList<>();
-        compactors.add(new L1SnipCompactor(maxMessagesBeforeSnip));
-        compactors.add(new L2MicroCompactor(keepRecentToolResults));
         compactors.add(new L3SpillCompactor(spillThresholdChars, spillDir, sessionId));
-        // L4 不加入常规管线，由 summarize() 单独触发，但作为 Compactor 存在
+        compactors.add(new L1SnipCompactor(l1MaxRounds));
+        compactors.add(new L2MicroCompactor(l2MaxCompactions, l2KeepRecentRounds));
+        // L4 不加入常规管线，由 summarize() 单独触发
         L4SummaryCompactor l4 = new L4SummaryCompactor(llmClient);
         long maxExecMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
-        return new ContextCompressionOrchestrator(compactors, l4, maxExecMs);
+        return new ContextCompressionOrchestrator(compactors, l4, maxExecMs, compressOnRounds);
     }
 
     /**
@@ -87,11 +95,8 @@ public class ContextCompressionOrchestrator {
     /**
      * L4 全量 LLM 摘要 — 供 CompactHandler/LoopBreakHandler/ThinkHandler 调用。
      *
-     * <p>与前三级不同，L4 不参与常规 {@link #run} 管线，由各 Handler 在需要时独立触发。
-     * 此方法为 L4 的独立入口，符合"所有压缩经过此类"的规则。</p>
-     *
-     * @param context         会话上下文（用于获取消息历史）
-     * @param startTime       请求开始时间（毫秒，用于超时检查）
+     * @param context          会话上下文（用于获取消息历史）
+     * @param startTime        请求开始时间（毫秒，用于超时检查）
      * @param fileContentCache 文件内容 LRU 缓存（可空）
      * @return 摘要文本，失败返回 null
      */
@@ -152,27 +157,38 @@ public class ContextCompressionOrchestrator {
     /**
      * 执行 L1-L3 压缩管线。
      *
+     * <p>双触发检查：roundCount > compressOnRounds 时才执行压缩。
+     * 每次压缩后重算受保护索引，避免索引偏移。</p>
+     *
      * @param messages      原始消息列表（含 system message）
-     * @param systemMessage 系统消息引用，用于判断系统消息在列表中的位置
+     * @param systemMessage 系统消息引用（当前未使用，保留签名兼容性）
      * @return 压缩结果
      */
     public CompressionResult run(List<Message> messages, Message systemMessage) {
+        // 双触发检查：轮次触发
+        int roundCount = countRounds(messages);
+        if (roundCount <= compressOnRounds) {
+            return new CompressionResult(messages, false, false, messages.size(), messages.size());
+        }
+
         int originalSize = messages.size();
         List<Message> result = new ArrayList<>(messages);
-
-        // 1. 一次扫描：保护 Read 工具结果
-        Set<Integer> protectedIndices = findReadResultIndices(result);
-
-        // 2. 依次执行 L1 → L2 → L3（L4 不在此管线中）
         boolean didCompact = false;
+
+        // 1. 一次扫描：保护 Read + Grep 工具结果
+        Set<Integer> protectedIndices = findProtectedToolResultIndices(result);
+
+        // 2. 依次执行 L3 → L1 → L2（L4 不在此管线中）
         for (Compactor compactor : compactors) {
-            if (compactor.order() >= 40) continue; // L4 有独立入口 summarize()
+            if (compactor.order() >= 40) continue;
             List<Message> before = result;
             result = compactor.compact(result, protectedIndices);
             if (result.size() < before.size()) {
                 didCompact = true;
                 log.debug("Compactor {}: {} → {} 条消息", compactor.name(), before.size(), result.size());
             }
+            // 重算保护索引，防止前序压缩的删除操作导致索引偏移
+            protectedIndices = findProtectedToolResultIndices(result);
         }
 
         return new CompressionResult(result, didCompact, false, originalSize, result.size());
@@ -180,42 +196,109 @@ public class ContextCompressionOrchestrator {
 
     /**
      * 运行完整压缩管线并返回压缩后的消息列表（便捷方法）。
-     * 等同于 run(messages, null).compressedMessages()。
      */
     public List<Message> run(List<Message> messages) {
         var result = run(messages, null);
-        
+
         if (!result.didCompact()) {
             consecutiveFailures++;
         } else {
             consecutiveFailures = 0;
         }
-        
+
         return result.compressedMessages();
     }
 
+    // ==================== 公共静态工具方法 ====================
+
     /**
-     * 一次扫描找出所有 Read 工具的结果消息索引。
+     * 计算消息列表中的 ReAct 步骤数量。
+     * 每个步骤 = ASSISTANT(含工具调用) + 其后的 TOOL 结果。
+     * 这与用户轮次不同 —— 一个用户提问可能包含多个 ReAct 步骤。
+     */
+    public static int countRounds(List<Message> messages) {
+        return findRoundBounds(messages).size();
+    }
+
+    /**
+     * 计算消息列表中 ReAct 步骤的边界。
+     *
+     * codemind 的 ReAct 模式：
+     *   USER → [ASSISTANT(with tools) + TOOLs]×N → [ASSISTANT(final)]
+     *
+     * 一个"步骤" = ASSISTANT + 其后的连续 TOOL 结果。
+     * L1/L2 以此为单位进行裁剪和保留，确保不拆散 ASSISTANT+TOOL 配对。
+     */
+    public static List<int[]> findRoundBounds(List<Message> messages) {
+        List<int[]> bounds = new ArrayList<>();
+        int i = 0;
+        if (!messages.isEmpty() && messages.get(0).getRole() == Message.Role.SYSTEM) {
+            i = 1;
+        }
+        while (i < messages.size()) {
+            if (messages.get(i).getRole() != Message.Role.ASSISTANT) {
+                i++;
+                continue;
+            }
+            int stepStart = i;
+            i++;
+            while (i < messages.size() && messages.get(i).getRole() == Message.Role.TOOL) {
+                i++;
+            }
+            bounds.add(new int[]{stepStart, i - 1});
+        }
+        return bounds;
+    }
+
+    // ==================== 受保护索引扫描 ====================
+
+    /**
+     * 找出所有 Read 工具的结果消息索引（仅 Read，用于 L4 摘要提取）。
      */
     public static Set<Integer> findReadResultIndices(List<Message> messages) {
-        Set<String> readToolCallIds = new HashSet<>();
-        // 第一遍：收集所有 Read 调用的 ID
+        Set<String> toolCallIds = new HashSet<>();
         for (Message msg : messages) {
             if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
                 for (var tc : msg.getToolCalls()) {
                     if ("Read".equals(tc.getName())) {
-                        readToolCallIds.add(tc.getId());
+                        toolCallIds.add(tc.getId());
                     }
                 }
             }
         }
-        // 第二遍：标记匹配的 TOOL 结果
         Set<Integer> indices = new HashSet<>();
         for (int i = 0; i < messages.size(); i++) {
             Message msg = messages.get(i);
             if (msg.getRole() == Message.Role.TOOL
                     && msg.getToolCallId() != null
-                    && readToolCallIds.contains(msg.getToolCallId())) {
+                    && toolCallIds.contains(msg.getToolCallId())) {
+                indices.add(i);
+            }
+        }
+        return indices;
+    }
+
+    /**
+     * 找出所有受保护的工具结果索引（Read + Grep），用于压缩管线保护。
+     */
+    public static Set<Integer> findProtectedToolResultIndices(List<Message> messages) {
+        Set<String> toolCallIds = new HashSet<>();
+        for (Message msg : messages) {
+            if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
+                for (var tc : msg.getToolCalls()) {
+                    String name = tc.getName();
+                    if ("Read".equals(name) || "Grep".equals(name)) {
+                        toolCallIds.add(tc.getId());
+                    }
+                }
+            }
+        }
+        Set<Integer> indices = new HashSet<>();
+        for (int i = 0; i < messages.size(); i++) {
+            Message msg = messages.get(i);
+            if (msg.getRole() == Message.Role.TOOL
+                    && msg.getToolCallId() != null
+                    && toolCallIds.contains(msg.getToolCallId())) {
                 indices.add(i);
             }
         }

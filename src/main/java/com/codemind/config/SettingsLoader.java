@@ -87,7 +87,7 @@ public class SettingsLoader {
         }
         if (source.getContext() != null) {
             if (source.getContext().getTruncation() != null) {
-                if (source.getContext().getTruncation().getSpillThresholdChars() != 8000)
+                if (source.getContext().getTruncation().getSpillThresholdChars() != 50000)
                     target.getContext().getTruncation().setSpillThresholdChars(source.getContext().getTruncation().getSpillThresholdChars());
                 if (source.getContext().getTruncation().getSpillDir() != null)
                     target.getContext().getTruncation().setSpillDir(source.getContext().getTruncation().getSpillDir());
@@ -103,16 +103,24 @@ public class SettingsLoader {
                     target.getContext().getCompaction().setKeepRecentToolResults(source.getContext().getCompaction().getKeepRecentToolResults());
                 if (source.getContext().getCompaction().getBudgetMaxBytes() != 200000)
                     target.getContext().getCompaction().setBudgetMaxBytes(source.getContext().getCompaction().getBudgetMaxBytes());
-                if (source.getContext().getCompaction().getCompactOnRatio() != 0.9)
+                if (source.getContext().getCompaction().getCompactOnRatio() != 0.70)
                     target.getContext().getCompaction().setCompactOnRatio(source.getContext().getCompaction().getCompactOnRatio());
                 if (source.getContext().getCompaction().getMaxConsecutiveFailures() != 3)
                     target.getContext().getCompaction().setMaxConsecutiveFailures(source.getContext().getCompaction().getMaxConsecutiveFailures());
                 if (source.getContext().getCompaction().isSaveTranscripts() != true)
                     target.getContext().getCompaction().setSaveTranscripts(source.getContext().getCompaction().isSaveTranscripts());
+                if (source.getContext().getCompaction().getCompressOnRounds() != 20)
+                    target.getContext().getCompaction().setCompressOnRounds(source.getContext().getCompaction().getCompressOnRounds());
+                if (source.getContext().getCompaction().getL1MaxRounds() != 15)
+                    target.getContext().getCompaction().setL1MaxRounds(source.getContext().getCompaction().getL1MaxRounds());
+                if (source.getContext().getCompaction().getL2MaxCompactions() != 30)
+                    target.getContext().getCompaction().setL2MaxCompactions(source.getContext().getCompaction().getL2MaxCompactions());
+                if (source.getContext().getCompaction().getL2KeepRecentRounds() != 3)
+                    target.getContext().getCompaction().setL2KeepRecentRounds(source.getContext().getCompaction().getL2KeepRecentRounds());
             }
         }
         if (source.getAgent() != null) {
-            if (source.getAgent().getMaxIterations() != 50)
+            if (source.getAgent().getMaxIterations() != 150)
                 target.getAgent().setMaxIterations(source.getAgent().getMaxIterations());
             if (source.getAgent().getTimeoutSeconds() != 300)
                 target.getAgent().setTimeoutSeconds(source.getAgent().getTimeoutSeconds());

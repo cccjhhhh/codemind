@@ -42,7 +42,7 @@ public class WorkflowOrchestrator {
 
     private static final Logger log = LoggerFactory.getLogger(WorkflowOrchestrator.class);
 
-    private static final int MAX_CACHED_FILES = 20;
+    private static final int MAX_CACHED_FILES = 30;
     private static final int MAX_FILE_CHARS = 200_000;
 
     // ==================== 结构性依赖（跨请求） ====================

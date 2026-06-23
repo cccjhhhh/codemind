@@ -46,7 +46,7 @@ public class CodeMindBootstrapper {
     private static final int DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS = 300;
 
     public BootstrapResult bootstrap(Path projectDir) {
-        return bootstrap(projectDir, 50, 300, null, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS);
+        return bootstrap(projectDir, 150, 300, null, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS);
     }
 
     public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds, Path configPath) {
@@ -141,7 +141,7 @@ public class CodeMindBootstrapper {
         int effectiveMaxIterations = settings.getAgent().getMaxIterations();
         int effectiveTimeout = settings.getAgent().getTimeoutSeconds();
         int effectiveLlmStreamingTimeout = settings.getAgent().getLlmStreamingTimeoutSeconds();
-        if (maxIterations != 50) effectiveMaxIterations = maxIterations;
+        if (maxIterations != 150) effectiveMaxIterations = maxIterations;
         if (timeoutSeconds != 300) effectiveTimeout = timeoutSeconds;
         if (llmStreamingTimeoutSeconds != DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS) effectiveLlmStreamingTimeout = llmStreamingTimeoutSeconds;
 
@@ -149,15 +149,17 @@ public class CodeMindBootstrapper {
         Settings.CompactionConfig compCfg = settings.getContext().getCompaction();
         Path spillDirResolved = Path.of(truncationCfg.getSpillDir());
         ContextCompressionOrchestrator compactionPipeline = ContextCompressionOrchestrator.createDefault(
-            compCfg.getMaxMessagesBeforeSnip(),
-            compCfg.getKeepRecentToolResults(),
+            compCfg.getL1MaxRounds(),
+            compCfg.getL2MaxCompactions(),
+            compCfg.getL2KeepRecentRounds(),
             compCfg.getBudgetMaxBytes(),
             spillDirResolved,
             truncationCfg.getSpillThresholdChars(),
             session.getSessionId(),
             compCfg.isSaveTranscripts(),
             llmClient,
-            effectiveTimeout
+            effectiveTimeout,
+            compCfg.getCompressOnRounds()
         );
 
         // 12. 创建 TokenBudget

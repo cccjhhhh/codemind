@@ -7,6 +7,7 @@ import com.codemind.llm.ToolCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
@@ -57,7 +58,20 @@ public class L4SummaryCompactor implements Compactor {
             return messages;
         }
 
-        return List.of(Message.user("[Compacted]\n\n" + summary));
+        // 保留最近 3 轮完整对话
+        List<int[]> bounds = ContextCompressionOrchestrator.findRoundBounds(messages);
+        List<Message> recent = new ArrayList<>();
+        for (int r = Math.max(0, bounds.size() - 3); r < bounds.size(); r++) {
+            int[] b = bounds.get(r);
+            for (int i = b[0]; i <= b[1]; i++) {
+                recent.add(messages.get(i));
+            }
+        }
+
+        List<Message> result = new ArrayList<>();
+        result.add(Message.user("[Compacted]\n\n" + summary));
+        result.addAll(recent);
+        return result;
     }
 
     // ==================== 核心摘要方法（供 Orchestrator.summarize 调用） ====================
