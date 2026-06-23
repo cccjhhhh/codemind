@@ -97,7 +97,7 @@ public class Settings {
         private int compressOnRounds = 30;
         private int l1MaxRounds = 15;
         private int l2MaxCompactions = 30;
-        private int l2KeepRecentRounds = 3;
+        private int l2KeepRecentRounds = 5;
 
         public int getMaxMessagesBeforeSnip() { return maxMessagesBeforeSnip; }
         public void setMaxMessagesBeforeSnip(int v) { this.maxMessagesBeforeSnip = v; }

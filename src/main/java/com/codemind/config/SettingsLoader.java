@@ -115,7 +115,7 @@ public class SettingsLoader {
                     target.getContext().getCompaction().setL1MaxRounds(source.getContext().getCompaction().getL1MaxRounds());
                 if (source.getContext().getCompaction().getL2MaxCompactions() != 30)
                     target.getContext().getCompaction().setL2MaxCompactions(source.getContext().getCompaction().getL2MaxCompactions());
-                if (source.getContext().getCompaction().getL2KeepRecentRounds() != 3)
+                if (source.getContext().getCompaction().getL2KeepRecentRounds() != 5)
                     target.getContext().getCompaction().setL2KeepRecentRounds(source.getContext().getCompaction().getL2KeepRecentRounds());
             }
         }
