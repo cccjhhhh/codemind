@@ -14,25 +14,27 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * L3 落盘压缩器：将大工具结果写入 spill 文件，替换为摘要。
+ * L3 大结果落盘压缩器：将超过阈值的大工具结果写入 spill 文件，替换为摘要预览。
  *
- * 【harness 规则 03-compression-single-entry】
- * 这是唯一的大结果落盘入口。
- * TruncationHook 不再做落盘，只做预览。
- * Read 工具结果受 protectedReadIndices 保护，不落盘。
+ * <p>大结果截断落盘入口。
+ * 所有工具的大结果都会被落盘到 spill 文件，
+ * 并替换为双端预览。
+ *
+ * <p>阈值由 {@code spillThresholdChars} 控制（默认 50000 字符）。
  */
 public class L3SpillCompactor implements Compactor {
 
     private static final Logger log = LoggerFactory.getLogger(L3SpillCompactor.class);
 
+    private static final int PREVIEW_HEAD = 3000;
+    private static final int PREVIEW_TAIL = 2000;
+
     private final int spillThresholdChars;
     private final Path spillDir;
-    private final String sessionId;
 
-    public L3SpillCompactor(int spillThresholdChars, Path spillDir, String sessionId) {
+    public L3SpillCompactor(int spillThresholdChars, Path spillDir) {
         this.spillThresholdChars = spillThresholdChars;
-        this.spillDir = spillDir.resolve(sessionId);
-        this.sessionId = sessionId;
+        this.spillDir = spillDir;
     }
 
     @Override
@@ -49,20 +51,24 @@ public class L3SpillCompactor implements Compactor {
             Message msg = result.get(i);
             if (msg.getRole() == Message.Role.TOOL && msg.getContent() != null
                     && msg.getContent().length() > spillThresholdChars) {
-                // 保护 Read 结果：不落盘
-                if (protectedReadIndices.contains(i)) continue;
-
+                // 落盘到 spill 文件
                 String persistedPath = persist(msg.getContent(), "tool_result");
-                String preview = msg.getContent().substring(0, Math.min(2000, msg.getContent().length()));
-                result.set(i, Message.tool(
-                        "[结果已保存](" + persistedPath + ")\n预览: " + preview,
-                        msg.getToolCallId()
-                ));
+                // 双端截断预览：保留头 800 + 尾 400 字符
+                int len = msg.getContent().length();
+                StringBuilder preview = new StringBuilder();
+                preview.append("[结果已保存](").append(persistedPath).append(")\n");
+                preview.append("[结果过长，仅显示预览]（共 ").append(len).append(" 字符）:\n");
+                preview.append(msg.getContent(), 0, Math.min(PREVIEW_HEAD, len));
+                if (len > PREVIEW_HEAD + PREVIEW_TAIL) {
+                    preview.append("\n...\n");
+                    preview.append(msg.getContent(), len - PREVIEW_TAIL, len);
+                }
+                result.set(i, Message.tool(preview.toString(), msg.getToolCallId()));
                 changed = true;
             }
         }
 
-        if (changed) log.debug("L3: 已落盘大工具结果到 {}", spillDir);
+        if (changed) log.debug("L3: 已落盘截断 {} 个大工具结果到 {}", changed ? "若干" : "0", spillDir);
         return result;
     }
 

@@ -27,7 +27,7 @@ public class ToolResult {
     public String getOutput() { return output; }
     public String getError() { return error; }
 
-    /** 替换输出内容（用于 TruncationHook 进行大结果落盘替换） */
+    /** 替换输出内容（用于钩子进行大结果替换） */
     public void setOutput(String newOutput) {
         this.output = newOutput;
     }

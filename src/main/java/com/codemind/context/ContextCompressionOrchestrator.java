@@ -58,10 +58,14 @@ public class ContextCompressionOrchestrator {
      * @param l1MaxRounds           L1 最多砍轮数
      * @param l2MaxCompactions       L2 最多缩写数
      * @param l2KeepRecentRounds     L2 保留最近轮数
+     * 创建默认编排器，包含 L1–L4 压缩器。
+     *
+     * @param l1MaxRounds           L1 最多砍轮数
+     * @param l2MaxCompactions       L2 最多缩写数
+     * @param l2KeepRecentRounds     L2 保留最近轮数
      * @param budgetMaxBytes         L3 预算（当前未使用，保留签名兼容性）
-     * @param spillDir               L3 持久化目录
-     * @param spillThresholdChars    L3 阈值
-     * @param sessionId              会话标识
+     * @param spillDir               L3 落盘目录
+     * @param spillThresholdChars    L3 截断阈值（字符数）
      * @param saveTranscripts        是否保存 transcripts
      * @param llmClient              LLM 客户端（用于 L4 摘要）
      * @param maxExecutionTimeSeconds 最大执行时间（秒），用于 L4 摘要超时检查
@@ -76,7 +80,6 @@ public class ContextCompressionOrchestrator {
             int budgetMaxBytes,
             Path spillDir,
             int spillThresholdChars,
-            String sessionId,
             boolean saveTranscripts,
             LLMClient llmClient,
             int maxExecutionTimeSeconds,
@@ -84,7 +87,7 @@ public class ContextCompressionOrchestrator {
             double compactOnRatio,
             TokenBudget tokenBudget) {
         List<Compactor> compactors = new ArrayList<>();
-        compactors.add(new L3SpillCompactor(spillThresholdChars, spillDir, sessionId));
+        compactors.add(new L3SpillCompactor(spillThresholdChars, spillDir));
         compactors.add(new L1SnipCompactor(l1MaxRounds));
         compactors.add(new L2MicroCompactor(l2MaxCompactions, l2KeepRecentRounds));
         // L4 不加入常规管线，由 summarize() 单独触发

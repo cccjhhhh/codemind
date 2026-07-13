@@ -31,7 +31,6 @@ import com.codemind.tool.ToolRegistryImpl;
 import com.codemind.tool.hook.MetricsHook;
 import com.codemind.tool.hook.PermissionPreHook;
 import com.codemind.tool.hook.SafetyPreHook;
-import com.codemind.tool.hook.TruncationHook;
 import com.codemind.tool.impl.*;
 import com.codemind.tool.spi.Tool;
 
@@ -130,11 +129,7 @@ public class CodeMindBootstrapper {
         SessionContext session = sessionManager.createSession();
         session.setWorkingDirectory(projectDir);
 
-        // TruncationHook — 只做预览不做落盘（落盘由 L3 统一处理）
         var truncationCfg = settings.getContext().getTruncation();
-        toolRegistry.registerHook(new TruncationHook(
-            truncationCfg.getSpillThresholdChars()
-        ));
         session.setSystemMessage(promptBuilder.build(session));
 
         // 10. Agent 参数覆盖逻辑：settings 为基准，CLI 参数覆盖
@@ -162,7 +157,6 @@ public class CodeMindBootstrapper {
             compCfg.getBudgetMaxBytes(),
             spillDirResolved,
             truncationCfg.getSpillThresholdChars(),
-            session.getSessionId(),
             compCfg.isSaveTranscripts(),
             llmClient,
             effectiveTimeout,
