@@ -20,6 +20,7 @@ import com.codemind.session.SessionContext;
 import com.codemind.session.SessionManager;
 import com.codemind.session.SessionManagerImpl;
 import com.codemind.session.SlidingWindowContextManager;
+import com.codemind.session.TokenCountService;
 import com.codemind.skill.ClasspathSkillProvider;
 import com.codemind.skill.DirectorySkillProvider;
 import com.codemind.skill.SkillDefinition;
@@ -150,17 +151,14 @@ public class CodeMindBootstrapper {
         // 12. 创建 CompactionPipeline（依赖 effectiveTimeout 用于 L4 超时检查）
         Settings.CompactionConfig compCfg = settings.getContext().getCompaction();
         Path spillDirResolved = Path.of(truncationCfg.getSpillDir());
+        TokenCountService tokenCountService = contextManager.getTokenCountService();
         ContextCompressionOrchestrator compactionPipeline = ContextCompressionOrchestrator.createDefault(
-            compCfg.getL1MaxRounds(),
-            compCfg.getL2MaxCompactions(),
-            compCfg.getL2KeepRecentRounds(),
-            compCfg.getBudgetMaxBytes(),
-            spillDirResolved,
             truncationCfg.getSpillThresholdChars(),
-            compCfg.isSaveTranscripts(),
+            spillDirResolved,
+            tokenCountService,
+            tokenCountService.getMaxContextTokens(),
             llmClient,
             effectiveTimeout,
-            compCfg.getCompressOnRounds(),
             compCfg.getCompactOnRatio(),
             tokenBudget
         );

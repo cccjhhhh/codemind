@@ -3,6 +3,7 @@ package com.codemind.context;
 import com.codemind.agent.engine.TokenBudget;
 import com.codemind.llm.LLMClient;
 import com.codemind.llm.Message;
+import com.codemind.llm.ToolCall;
 import com.codemind.session.SessionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,9 +21,9 @@ import java.util.*;
  * 所有压缩必须经过此类。
  *
  * 执行流程：
- * 1. 双触发检查 (round > compressOnRounds OR token > compactOnRatio)
+ * 1. Token 使用率检查 (token > compactOnRatio)
  * 2. 一次扫描计算受保护索引（Read + Grep）
- * 3. 按 order() 依次执行 L3 → L1 → L2
+ * 3. 按 order() 依次执行 L1 → L2 → L3
  * 4. 每次压缩后重算受保护索引
  * 5. L4 LLM 摘要通过 {@link #summarize} 独立触发
  * 6. 返回 CompressionResult
@@ -34,20 +35,18 @@ public class ContextCompressionOrchestrator {
     private final List<Compactor> compactors;
     private final L4SummaryCompactor l4SummaryCompactor;
     private final long maxExecutionTimeMs;
-    private final int compressOnRounds;
     private final double compactOnRatio;        // token 百分比触发阈值（0.70 = 70%）
     private final TokenBudget tokenBudget;      // 用于百分比检查（可为 null）
     private int consecutiveFailures = 0;
 
     public ContextCompressionOrchestrator(List<Compactor> compactors, L4SummaryCompactor l4SummaryCompactor,
-                                           long maxExecutionTimeMs, int compressOnRounds,
+                                           long maxExecutionTimeMs,
                                            double compactOnRatio, TokenBudget tokenBudget) {
         this.compactors = compactors.stream()
                 .sorted(Comparator.comparingInt(Compactor::order))
                 .toList();
         this.l4SummaryCompactor = l4SummaryCompactor;
         this.maxExecutionTimeMs = maxExecutionTimeMs;
-        this.compressOnRounds = compressOnRounds;
         this.compactOnRatio = compactOnRatio;
         this.tokenBudget = tokenBudget;
     }
@@ -55,45 +54,32 @@ public class ContextCompressionOrchestrator {
     /**
      * 创建默认编排器，包含 L1–L4 压缩器。
      *
-     * @param l1MaxRounds           L1 最多砍轮数
-     * @param l2MaxCompactions       L2 最多缩写数
-     * @param l2KeepRecentRounds     L2 保留最近轮数
-     * 创建默认编排器，包含 L1–L4 压缩器。
-     *
-     * @param l1MaxRounds           L1 最多砍轮数
-     * @param l2MaxCompactions       L2 最多缩写数
-     * @param l2KeepRecentRounds     L2 保留最近轮数
-     * @param budgetMaxBytes         L3 预算（当前未使用，保留签名兼容性）
-     * @param spillDir               L3 落盘目录
-     * @param spillThresholdChars    L3 截断阈值（字符数）
-     * @param saveTranscripts        是否保存 transcripts
+     * @param spillThresholdChars    L1 截断阈值（字符数）
+     * @param spillDir               L1 落盘目录
+     * @param tokenCountService      Token 计数服务（用于 L2、L3 触发）
+     * @param maxContextTokens       模型最大上下文窗口（tokens）
      * @param llmClient              LLM 客户端（用于 L4 摘要）
      * @param maxExecutionTimeSeconds 最大执行时间（秒），用于 L4 摘要超时检查
-     * @param compressOnRounds       轮次触发阈值
      * @param compactOnRatio         token 百分比触发阈值（0.70 = 70%）
      * @param tokenBudget            TokenBudget 实例，用于百分比检查
      */
     public static ContextCompressionOrchestrator createDefault(
-            int l1MaxRounds,
-            int l2MaxCompactions,
-            int l2KeepRecentRounds,
-            int budgetMaxBytes,
-            Path spillDir,
             int spillThresholdChars,
-            boolean saveTranscripts,
+            Path spillDir,
+            com.codemind.session.TokenCountService tokenCountService,
+            int maxContextTokens,
             LLMClient llmClient,
             int maxExecutionTimeSeconds,
-            int compressOnRounds,
             double compactOnRatio,
             TokenBudget tokenBudget) {
         List<Compactor> compactors = new ArrayList<>();
-        compactors.add(new L3SpillCompactor(spillThresholdChars, spillDir));
-        compactors.add(new L1SnipCompactor(l1MaxRounds));
-        compactors.add(new L2MicroCompactor(l2MaxCompactions, l2KeepRecentRounds));
+        compactors.add(new L1SpillCompactor(spillThresholdChars, spillDir));
+        compactors.add(new L2SnipCompactor(tokenCountService, maxContextTokens));
+        compactors.add(new L3MicroCompactor(tokenCountService, maxContextTokens));
         // L4 不加入常规管线，由 summarize() 单独触发
         L4SummaryCompactor l4 = new L4SummaryCompactor(llmClient);
         long maxExecMs = maxExecutionTimeSeconds > 0 ? maxExecutionTimeSeconds * 1000L : 0;
-        return new ContextCompressionOrchestrator(compactors, l4, maxExecMs, compressOnRounds,
+        return new ContextCompressionOrchestrator(compactors, l4, maxExecMs,
                 compactOnRatio, tokenBudget);
     }
 
@@ -153,12 +139,18 @@ public class ContextCompressionOrchestrator {
         return l4SummaryCompactor.callLlmSummary(conversation, readFiles, cachedFiles);
     }
 
+    private static final int MAX_CACHED_FILES_L4 = 5;
+
     private static String getCachedFileContentForPrompt(Map<String, String> fileContentCache) {
         if (fileContentCache == null || fileContentCache.isEmpty()) return "";
         StringBuilder sb = new StringBuilder();
         sb.append("\n\n=== Read Files (guaranteed full content, do not omit) ===\n");
         synchronized (fileContentCache) {
-            for (Map.Entry<String, String> entry : fileContentCache.entrySet()) {
+            // 只注入最近 5 个文件（借鉴 Claude Code 的设计）
+            List<Map.Entry<String, String>> entries = new ArrayList<>(fileContentCache.entrySet());
+            int start = Math.max(0, entries.size() - MAX_CACHED_FILES_L4);
+            for (int i = start; i < entries.size(); i++) {
+                Map.Entry<String, String> entry = entries.get(i);
                 sb.append("\n--- ").append(entry.getKey()).append(" ---\n");
                 sb.append(entry.getValue()).append("\n");
             }
@@ -171,8 +163,7 @@ public class ContextCompressionOrchestrator {
     /**
      * 执行 L1-L3 压缩管线。
      *
-     * <p>双触发检查：roundCount > compressOnRounds OR token 使用率 > compactOnRatio。
-     * 只有至少一个条件满足时才执行压缩。
+     * <p>触发检查：基于 token 使用率，由各 Compactor 内部判断是否触发。
      * 每次压缩后重算受保护索引，避免索引偏移。</p>
      *
      * @param messages      原始消息列表（含 system message）
@@ -180,27 +171,20 @@ public class ContextCompressionOrchestrator {
      * @return 压缩结果
      */
     public CompressionResult run(List<Message> messages, Message systemMessage) {
-        // 双触发检查
-        int roundCount = countRounds(messages);
-        boolean roundTrigger = roundCount > compressOnRounds;
-        boolean tokenTrigger = false;
+        // 计算当前 token 使用率
+        boolean shouldRun = false;
         if (tokenBudget != null) {
             double usage = tokenBudget.getUsageRatio(messages);
-            tokenTrigger = usage > compactOnRatio;
-            if (tokenTrigger) {
-                log.info("Token 百分比触发: {}% > {}% (rounds={}, triggerRounds={})",
+            shouldRun = usage > compactOnRatio;
+            if (shouldRun) {
+                log.info("Token 百分比触发: {}% > {}%",
                         String.format("%.1f", usage * 100),
-                        String.format("%.0f", compactOnRatio * 100),
-                        roundCount, compressOnRounds);
+                        String.format("%.0f", compactOnRatio * 100));
             }
         }
-        if (!roundTrigger && !tokenTrigger) {
+
+        if (!shouldRun) {
             return new CompressionResult(messages, false, false, messages.size(), messages.size());
-        }
-        if (roundTrigger) {
-            log.info("轮次触发: {} > {} (token 使用率={})",
-                    roundCount, compressOnRounds,
-                    tokenBudget != null ? String.format("%.1f%%", tokenBudget.getUsageRatio(messages) * 100) : "N/A");
         }
 
         int originalSize = messages.size();
@@ -210,7 +194,7 @@ public class ContextCompressionOrchestrator {
         // 1. 一次扫描：保护 Read + Grep 工具结果
         Set<Integer> protectedIndices = findProtectedToolResultIndices(result);
 
-        // 2. 依次执行 L3 → L1 → L2（L4 不在此管线中）
+        // 2. 依次执行 L1 → L2 → L3（L4 不在此管线中）
         for (Compactor compactor : compactors) {
             if (compactor.order() >= 40) continue;
             List<Message> before = result;
@@ -335,5 +319,31 @@ public class ContextCompressionOrchestrator {
             }
         }
         return indices;
+    }
+
+    /**
+     * 找到指定 TOOL 消息对应的工具名称。
+     * 通过向后搜索 ASSISTANT 消息中的 tool_call_id 匹配项来查找。
+     *
+     * @param messages  完整消息列表
+     * @param toolIndex TOOL 消息的索引
+     * @return 工具名称（如 "Read"、"Edit"），未找到返回 null
+     */
+    public static String findToolName(List<Message> messages, int toolIndex) {
+        if (toolIndex < 0 || toolIndex >= messages.size()) return null;
+        Message toolMsg = messages.get(toolIndex);
+        String toolCallId = toolMsg.getToolCallId();
+        if (toolCallId == null) return null;
+        for (int i = toolIndex - 1; i >= 0; i--) {
+            Message msg = messages.get(i);
+            if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
+                for (ToolCall tc : msg.getToolCalls()) {
+                    if (toolCallId.equals(tc.getId())) {
+                        return tc.getName();
+                    }
+                }
+            }
+        }
+        return null;
     }
 }

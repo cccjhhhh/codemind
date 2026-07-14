@@ -165,18 +165,20 @@ public class L4SummaryCompactor implements Compactor {
     }
 
     private static String findReadPath(List<Message> messages, int toolIndex) {
-        if (toolIndex < 0 || toolIndex >= messages.size()) return "?";
+        // 先用共享方法验证这是 Read 工具
+        String toolName = ContextCompressionOrchestrator.findToolName(messages, toolIndex);
+        if (toolName == null) return "?";
+        // 提取 path 参数
         Message toolMsg = messages.get(toolIndex);
         String toolCallId = toolMsg.getToolCallId();
         if (toolCallId == null) return "?";
-
         for (int i = toolIndex - 1; i >= 0; i--) {
             Message msg = messages.get(i);
             if (msg.getRole() == Message.Role.ASSISTANT && msg.hasToolCalls()) {
                 for (ToolCall tc : msg.getToolCalls()) {
                     if (toolCallId.equals(tc.getId())) {
-                        return tc.getArguments() != null
-                            ? (String) tc.getArguments().get("path") : "?";
+                        Object path = tc.getArguments() != null ? tc.getArguments().get("path") : null;
+                        return path != null ? path.toString() : "?";
                     }
                 }
             }

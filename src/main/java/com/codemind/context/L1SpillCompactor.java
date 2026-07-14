@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * L3 大结果落盘压缩器：将超过阈值的大工具结果写入 spill 文件，替换为摘要预览。
+ * L1 大结果落盘压缩器：将超过阈值的大工具结果写入 spill 文件，替换为摘要预览。
  *
  * <p>大结果截断落盘入口。
  * 所有工具的大结果都会被落盘到 spill 文件，
@@ -22,9 +22,9 @@ import java.util.Set;
  *
  * <p>阈值由 {@code spillThresholdChars} 控制（默认 50000 字符）。
  */
-public class L3SpillCompactor implements Compactor {
+public class L1SpillCompactor implements Compactor {
 
-    private static final Logger log = LoggerFactory.getLogger(L3SpillCompactor.class);
+    private static final Logger log = LoggerFactory.getLogger(L1SpillCompactor.class);
 
     private static final int PREVIEW_HEAD = 3000;
     private static final int PREVIEW_TAIL = 2000;
@@ -32,14 +32,14 @@ public class L3SpillCompactor implements Compactor {
     private final int spillThresholdChars;
     private final Path spillDir;
 
-    public L3SpillCompactor(int spillThresholdChars, Path spillDir) {
+    public L1SpillCompactor(int spillThresholdChars, Path spillDir) {
         this.spillThresholdChars = spillThresholdChars;
         this.spillDir = spillDir;
     }
 
     @Override
     public int order() {
-        return 10;
+        return 10;  // L1: 最先执行
     }
 
     @Override
@@ -68,7 +68,7 @@ public class L3SpillCompactor implements Compactor {
             }
         }
 
-        if (changed) log.debug("L3: 已落盘截断 {} 个大工具结果到 {}", changed ? "若干" : "0", spillDir);
+        if (changed) log.debug("L1: 已落盘截断 {} 个大工具结果到 {}", changed ? "若干" : "0", spillDir);
         return result;
     }
 
@@ -80,7 +80,7 @@ public class L3SpillCompactor implements Compactor {
             Files.writeString(file, content);
             return file.toString();
         } catch (IOException e) {
-            log.warn("L3 落盘失败: {}", e.getMessage());
+            log.warn("L1 落盘失败: {}", e.getMessage());
             return "(persist failed)";
         }
     }
