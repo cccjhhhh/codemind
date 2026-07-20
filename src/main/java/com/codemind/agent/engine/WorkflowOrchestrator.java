@@ -57,6 +57,10 @@ public class WorkflowOrchestrator {
     private final TokenBudget tokenBudget;
     private final int llmStreamingTimeoutSeconds;
 
+    // ==================== 熔断器 ====================
+
+    private final CircuitBreaker circuitBreaker;
+
     // ==================== 文件内容缓存 (LRU, 跨请求) ====================
 
     private final Map<String, String> fileContentCache;
@@ -86,6 +90,7 @@ public class WorkflowOrchestrator {
         this.compactionPipeline = compactionPipeline;
         this.tokenBudget = tokenBudget;
         this.fileContentCache = createFileContentCache();
+        this.circuitBreaker = new CircuitBreaker();
         this.initialState = pattern.initialState();
         this.handlers = pattern.createHandlers(
             llmClient, toolRegistry, outputFormatter,
@@ -125,6 +130,13 @@ public class WorkflowOrchestrator {
                 return AgentResult.failure("执行超时");
             }
 
+            // 熔断器检查
+            if (!circuitBreaker.allowExecution()) {
+                outputHandler.accept(outputFormatter.formatWarning(
+                    "熔断器触发，执行已暂停 (状态: " + circuitBreaker.getState() + ")"));
+                return AgentResult.failure("熔断器触发: " + circuitBreaker.getStats());
+            }
+
             // 迭代计数熔断（不覆盖终端态和 ACT 中间态）
             if (state.iterationCount >= maxIterations
                     && reason != TerminalState.COMPLETE
@@ -135,6 +147,7 @@ public class WorkflowOrchestrator {
 
             // 终端态处理（Object 是接口，不能 switch-enum，改用 if-else）
             if (reason == TerminalState.COMPLETE) {
+                circuitBreaker.recordSuccess();
                 List<Message> history = ctx.getHistory();
                 String lastMsg = history.isEmpty() ? "" : history.get(history.size() - 1).getContent();
                 return AgentResult.success(
@@ -142,6 +155,7 @@ public class WorkflowOrchestrator {
             } else if (reason == TerminalState.ERROR
                     || reason == TerminalState.MAX_ITERATIONS
                     || reason == TerminalState.USER_INTERRUPT) {
+                circuitBreaker.recordFailure();
                 return AgentResult.failure("执行终止: " + reason);
             }
 
@@ -151,6 +165,7 @@ public class WorkflowOrchestrator {
             // 更新迭代计数
             if (result.countTurn()) {
                 state.iterationCount++;
+                circuitBreaker.recordSuccess();
             }
 
             reason = result.nextReason();

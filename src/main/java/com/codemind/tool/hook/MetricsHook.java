@@ -1,5 +1,6 @@
 package com.codemind.tool.hook;
 
+import com.codemind.evaluation.EvaluationCollector;
 import com.codemind.tool.spi.ToolHook;
 import com.codemind.tool.ToolResult;
 import org.slf4j.Logger;
@@ -15,9 +16,31 @@ public class MetricsHook implements ToolHook {
     private final Map<String, Integer> toolCallCounts = new ConcurrentHashMap<>();
     private final Map<String, Integer> toolFailureCounts = new ConcurrentHashMap<>();
 
+    // 评估收集器 (可选)
+    private EvaluationCollector evaluationCollector;
+
+    // 用于记录工具调用开始时间
+    private final ThreadLocal<Long> toolStartTime = new ThreadLocal<>();
+
+    public MetricsHook() {
+        this(null);
+    }
+
+    public MetricsHook(EvaluationCollector evaluationCollector) {
+        this.evaluationCollector = evaluationCollector;
+    }
+
+    /**
+     * 设置评估收集器
+     */
+    public void setEvaluationCollector(EvaluationCollector collector) {
+        this.evaluationCollector = collector;
+    }
+
     @Override
     public void preExecute(String toolName, Map<String, Object> args) {
         toolCallCounts.merge(toolName, 1, Integer::sum);
+        toolStartTime.set(System.currentTimeMillis());
     }
 
     @Override
@@ -29,6 +52,36 @@ public class MetricsHook implements ToolHook {
         if (!result.isSuccess()) {
             toolFailureCounts.merge(toolName, 1, Integer::sum);
         }
+
+        // 记录到评估收集器
+        if (evaluationCollector != null) {
+            Long startTime = toolStartTime.get();
+            long duration = startTime != null ? System.currentTimeMillis() - startTime : elapsedMs;
+            evaluationCollector.recordToolCall(toolName, new ConcurrentHashMap<>(), result, duration);
+        }
+
+        toolStartTime.remove();
     }
 
+    /**
+     * 获取工具调用统计
+     */
+    public Map<String, Integer> getToolCallCounts() {
+        return new ConcurrentHashMap<>(toolCallCounts);
+    }
+
+    /**
+     * 获取工具失败统计
+     */
+    public Map<String, Integer> getToolFailureCounts() {
+        return new ConcurrentHashMap<>(toolFailureCounts);
+    }
+
+    /**
+     * 重置统计
+     */
+    public void reset() {
+        toolCallCounts.clear();
+        toolFailureCounts.clear();
+    }
 }

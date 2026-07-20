@@ -28,9 +28,20 @@ public class L3MicroCompactor implements Compactor {
     private static final Logger log = LoggerFactory.getLogger(L3MicroCompactor.class);
 
     /**
-     * 保留最近的工具结果数量（默认5个）
+     * 基础保留最近的工具结果数量（默认3个）
+     * 实际保留数量会根据工具结果大小动态调整
      */
-    private static final int KEEP_RECENT_TOOL_RESULTS = 5;
+    private static final int BASE_KEEP_RECENT = 3;
+
+    /**
+     * 大结果额外保留数量（当工具结果 > 1KB 时）
+     */
+    private static final int LARGE_RESULT_BONUS = 2;
+
+    /**
+     * 大结果阈值（字符数）
+     */
+    private static final int LARGE_RESULT_THRESHOLD = 1000;
 
     /**
      * 可压缩的工具列表（内容可以重新读取或执行）
@@ -85,15 +96,19 @@ public class L3MicroCompactor implements Compactor {
         // 找到所有可压缩的工具结果
         List<Integer> compactableIndices = findCompactableToolResults(messages);
 
-        // 如果可压缩的工具结果数量 <= KEEP_RECENT_TOOL_RESULTS，则跳过
-        if (compactableIndices.size() <= KEEP_RECENT_TOOL_RESULTS) {
+        // 动态计算保留数量（基于工具结果大小分布）
+        int keepRecent = calculateAdaptiveKeepCount(messages, compactableIndices);
+        log.debug("L3 Micro: 动态保留 {} 个工具结果", keepRecent);
+
+        // 如果可压缩的工具结果数量 <= keepRecent，则跳过
+        if (compactableIndices.size() <= keepRecent) {
             log.debug("L3 Micro: 可压缩工具结果数量 {} ≤ {}，跳过",
-                compactableIndices.size(), KEEP_RECENT_TOOL_RESULTS);
+                compactableIndices.size(), keepRecent);
             return messages;
         }
 
         List<Message> result = new ArrayList<>(messages);
-        int toClear = compactableIndices.size() - KEEP_RECENT_TOOL_RESULTS;
+        int toClear = compactableIndices.size() - keepRecent;
         int cleared = 0;
 
         // 清理旧的工具结果（保留最近N个）
@@ -114,10 +129,36 @@ public class L3MicroCompactor implements Compactor {
 
         if (cleared > 0) {
             log.info("L3 Micro: 清理 {} 个工具结果，保留最近 {} 个",
-                cleared, KEEP_RECENT_TOOL_RESULTS);
+                cleared, keepRecent);
         }
 
         return result;
+    }
+
+    /**
+     * 动态计算保留数量（基于工具结果大小分布）
+     *
+     * 策略：
+     * - 基础保留：3个
+     * - 大结果（>1KB）额外保留：2个
+     * - 确保大结果不被清理（它们通常包含重要信息）
+     */
+    private int calculateAdaptiveKeepCount(List<Message> messages, List<Integer> compactableIndices) {
+        int largeResultCount = 0;
+
+        // 统计大结果数量
+        for (int idx : compactableIndices) {
+            Message msg = messages.get(idx);
+            if (msg.getContent() != null && msg.getContent().length() > LARGE_RESULT_THRESHOLD) {
+                largeResultCount++;
+            }
+        }
+
+        // 动态保留：基础 + 大结果额外保留
+        int keepRecent = BASE_KEEP_RECENT + Math.min(largeResultCount, LARGE_RESULT_BONUS);
+        log.debug("L3 Micro: 大结果数量 {}，动态保留 {} 个", largeResultCount, keepRecent);
+
+        return keepRecent;
     }
 
     /**

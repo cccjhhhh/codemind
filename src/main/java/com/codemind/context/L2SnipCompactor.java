@@ -31,10 +31,20 @@ public class L2SnipCompactor implements Compactor {
     private static final int KEEP_HEAD_ROUNDS = 3;
 
     /**
-     * 尾部 token 预算（~20K tokens，约 5000 个词）
-     * 生产实践：laia-core、ContextCompressionEngine 都用这个方案
+     * 基础尾部 token 预算（~15K tokens）
+     * 实际预算会根据对话轮次动态调整
      */
-    private static final int TAIL_TOKEN_BUDGET = 20000;
+    private static final int BASE_TAIL_TOKEN_BUDGET = 15000;
+
+    /**
+     * 每轮额外 token 预算（新对话轮次获得更多空间）
+     */
+    private static final int PER_ROUND_BONUS = 2000;
+
+    /**
+     * 最大尾部 token 预算上限
+     */
+    private static final int MAX_TAIL_TOKEN_BUDGET = 30000;
 
     /**
      * 至少保留的消息数量（硬最小值）
@@ -89,8 +99,13 @@ public class L2SnipCompactor implements Compactor {
 
         int headEnd = KEEP_HEAD_ROUNDS;
 
+        // 动态计算尾部 token 预算（基于对话轮次）
+        int totalRounds = roundBounds.size();
+        int tailTokenBudget = calculateDynamicBudget(totalRounds);
+        log.debug("L2 Snip: 动态尾部预算 {} tokens (基于 {} 轮对话)", tailTokenBudget, totalRounds);
+
         // 基于 token 预算计算尾部起始位置
-        int tailStart = findTailByTokenBudget(messages, headEnd, TAIL_TOKEN_BUDGET);
+        int tailStart = findTailByTokenBudget(messages, headEnd, tailTokenBudget);
 
         // 确保至少保留 MIN_TAIL_MESSAGES 条消息
         int minTailStart = Math.max(headEnd + 1, messages.size() - MIN_TAIL_MESSAGES);
@@ -118,8 +133,20 @@ public class L2SnipCompactor implements Compactor {
         result.addAll(messages.subList(tailMsgIndex, messages.size()));
 
         log.info("L2 Snip: 删除 {} 条消息（前 {} 轮 + 后约 {} tokens）",
-            snipped, headEnd, TAIL_TOKEN_BUDGET);
+            snipped, headEnd, tailTokenBudget);
         return result;
+    }
+
+    /**
+     * 动态计算尾部 token 预算
+     *
+     * 策略：新对话轮次获得更多空间，确保最近的工作上下文完整保留
+     * - 基础预算：15K tokens
+     * - 每轮额外：2K tokens（最多增加到30K）
+     */
+    private int calculateDynamicBudget(int totalRounds) {
+        int bonus = Math.min(totalRounds * PER_ROUND_BONUS, MAX_TAIL_TOKEN_BUDGET - BASE_TAIL_TOKEN_BUDGET);
+        return BASE_TAIL_TOKEN_BUDGET + bonus;
     }
 
     /**

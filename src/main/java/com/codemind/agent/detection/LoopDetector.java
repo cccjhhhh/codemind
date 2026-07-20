@@ -10,7 +10,7 @@ import java.util.Map;
  * 循环检测器。
  *
  * 独立于 RecoveryManager，专注检测 Agent 是否陷入重复操作模式。
- * 检测策略可插拔（策略模式），当前实现为"连续重复检测"。
+ * 检测策略可插拔（策略模式），当前实现为"连续重复检测" + "频率检测"。
  *
  * 【harness 规则 09-recovery-scope】
  * - 只负责检测算法，不关心 AgentLoop 状态转移
@@ -35,6 +35,15 @@ public class LoopDetector {
 
     /** 环形缓冲区：最近 N 条工具调用记录 */
     private final LinkedList<ToolCallRecord> recentToolCalls = new LinkedList<>();
+
+    /** 频率检测阈值：同一工具在窗口内调用次数超过此值触发警告 */
+    private static final int FREQUENCY_WARNING_THRESHOLD = 8;
+
+    /** 频率检测阈值：同一工具在窗口内调用次数超过此值触发循环检测 */
+    private static final int FREQUENCY_LOOP_THRESHOLD = 12;
+
+    /** 模式检测：检测重复模式（如 A-B-A-B） */
+    private static final int PATTERN_DETECTION_WINDOW = 6;
 
     public LoopDetector() {
         this(20, 3, 15);
@@ -64,7 +73,20 @@ public class LoopDetector {
             return LoopDetectionResult.NEGATIVE;
         }
 
-        return detect(toolName);
+        // 多策略检测
+        LoopDetectionResult result = detect(toolName);
+
+        // 如果连续重复检测未触发，尝试频率检测
+        if (!result.detected()) {
+            result = detectByFrequency(toolName);
+        }
+
+        // 如果频率检测未触发，尝试模式检测
+        if (!result.detected()) {
+            result = detectByPattern();
+        }
+
+        return result;
     }
 
     /**
@@ -104,6 +126,68 @@ public class LoopDetector {
 
         log.warn("检测到连续循环: '{}' 连续 {} 次 (阈值 {})", lastKey, threshold, threshold);
         return LoopDetectionResult.positive(lastKey, toolName, threshold);
+    }
+
+    /**
+     * 频率检测：同一工具在窗口内调用次数过多
+     */
+    private LoopDetectionResult detectByFrequency(String toolName) {
+        if (recentToolCalls.size() < FREQUENCY_WARNING_THRESHOLD) {
+            return LoopDetectionResult.NEGATIVE;
+        }
+
+        // 统计同一工具的调用次数
+        int count = 0;
+        for (ToolCallRecord record : recentToolCalls) {
+            if (record.toolName.equals(toolName)) {
+                count++;
+            }
+        }
+
+        if (count >= FREQUENCY_LOOP_THRESHOLD) {
+            log.warn("检测到频率循环: '{}' 在窗口内调用 {} 次 (阈值 {})",
+                toolName, count, FREQUENCY_LOOP_THRESHOLD);
+            return LoopDetectionResult.positive(toolName + ":frequency", toolName, count);
+        }
+
+        if (count >= FREQUENCY_WARNING_THRESHOLD) {
+            log.warn("检测到高频调用: '{}' 在窗口内调用 {} 次 (警告阈值 {})",
+                toolName, count, FREQUENCY_WARNING_THRESHOLD);
+        }
+
+        return LoopDetectionResult.NEGATIVE;
+    }
+
+    /**
+     * 模式检测：检测重复模式（如 A-B-A-B）
+     */
+    private LoopDetectionResult detectByPattern() {
+        if (recentToolCalls.size() < PATTERN_DETECTION_WINDOW) {
+            return LoopDetectionResult.NEGATIVE;
+        }
+
+        // 检测 A-B-A-B 模式
+        for (int patternLen = 2; patternLen <= PATTERN_DETECTION_WINDOW / 2; patternLen++) {
+            boolean isPattern = true;
+            for (int i = recentToolCalls.size() - patternLen; i < recentToolCalls.size(); i++) {
+                ToolCallRecord current = recentToolCalls.get(i);
+                ToolCallRecord pattern = recentToolCalls.get(i - patternLen);
+                if (!current.toolName.equals(pattern.toolName) ||
+                    !current.argsDigest.equals(pattern.argsDigest)) {
+                    isPattern = false;
+                    break;
+                }
+            }
+
+            if (isPattern) {
+                String patternKey = recentToolCalls.get(recentToolCalls.size() - patternLen).toolName
+                    + ":" + recentToolCalls.get(recentToolCalls.size() - patternLen).argsDigest;
+                log.warn("检测到模式循环: 模式长度 {} 重复出现 (模式: {})", patternLen, patternKey);
+                return LoopDetectionResult.positive(patternKey + ":pattern", patternKey.split(":")[0], patternLen);
+            }
+        }
+
+        return LoopDetectionResult.NEGATIVE;
     }
 
     private String digestArgs(String toolName, Map<String, Object> args) {
