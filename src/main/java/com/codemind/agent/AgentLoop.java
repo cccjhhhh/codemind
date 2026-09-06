@@ -2,7 +2,9 @@ package com.codemind.agent;
 
 import com.codemind.agent.engine.TokenBudget;
 import com.codemind.agent.engine.WorkflowOrchestrator;
+import com.codemind.agent.pattern.planexec.PlanAgentPattern;
 import com.codemind.agent.pattern.react.ReactAgentPattern;
+import com.codemind.agent.spi.AgentPattern;
 import com.codemind.agent.spi.AgentResult;
 import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
@@ -40,13 +42,40 @@ public class AgentLoop {
                      int llmStreamingTimeoutSeconds,
                      SkillRouter skillRouter, SystemPromptBuilder promptBuilder,
                      ContextCompressionOrchestrator compactionPipeline, TokenBudget tokenBudget) {
+        this(permissionGate, skillRouter,
+             new WorkflowOrchestrator(
+                 llmClient, toolRegistry, outputFormatter,
+                 maxIterations, maxExecutionTimeSeconds, llmStreamingTimeoutSeconds,
+                 promptBuilder, compactionPipeline, tokenBudget,
+                 new ReactAgentPattern()));
+    }
+
+    /**
+     * 指定 Agent 模式的构造函数。
+     *
+     * @param pattern Agent 模式（react / plan-exec）
+     */
+    public AgentLoop(LLMClient llmClient, ToolRegistry toolRegistry,
+                     PermissionGate permissionGate, OutputFormatter outputFormatter,
+                     int maxIterations, int maxExecutionTimeSeconds,
+                     int llmStreamingTimeoutSeconds,
+                     SkillRouter skillRouter, SystemPromptBuilder promptBuilder,
+                     ContextCompressionOrchestrator compactionPipeline, TokenBudget tokenBudget,
+                     AgentPattern pattern) {
         this.permissionGate = permissionGate;
         this.skillRouter = skillRouter;
         this.orchestrator = new WorkflowOrchestrator(
             llmClient, toolRegistry, outputFormatter,
             maxIterations, maxExecutionTimeSeconds, llmStreamingTimeoutSeconds,
             promptBuilder, compactionPipeline, tokenBudget,
-            new ReactAgentPattern());
+            pattern);
+    }
+
+    private AgentLoop(PermissionGate permissionGate, SkillRouter skillRouter,
+                      WorkflowOrchestrator orchestrator) {
+        this.permissionGate = permissionGate;
+        this.skillRouter = skillRouter;
+        this.orchestrator = orchestrator;
     }
 
     // ==================== 公共入口 ====================

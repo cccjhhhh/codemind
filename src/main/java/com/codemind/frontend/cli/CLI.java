@@ -102,6 +102,9 @@ public class CLI implements Runnable {
     @Option(names = {"--timeout"}, description = "超时时间（秒，默认 300）")
     private int timeoutSeconds = DEFAULT_TIMEOUT_SECONDS;
 
+    @Option(names = {"--pattern"}, description = "Agent 模式：react / plan（默认 react）")
+    private String agentPattern = "react";
+
     // 300秒 = 5分钟，与 Claude Code/OpenAI Codex 一致，支持复杂任务
     private static final int DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS = 300;
 
@@ -123,7 +126,7 @@ public class CLI implements Runnable {
         // Use CodeMindBootstrapper for everything
         CodeMindBootstrapper bootstrapper = new CodeMindBootstrapper();
         var bootResult = bootstrapper.bootstrap(projectDir, maxIterations, timeoutSeconds,
-            configPath != null && !configPath.isEmpty() ? Path.of(configPath) : null, llmStreamingTimeoutSeconds);
+            configPath != null && !configPath.isEmpty() ? Path.of(configPath) : null, llmStreamingTimeoutSeconds, agentPattern);
 
         this.toolRegistry = bootResult.toolRegistry();
         this.permissionGate = bootResult.permissionGate();

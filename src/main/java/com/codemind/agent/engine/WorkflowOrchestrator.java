@@ -7,6 +7,8 @@ import com.codemind.agent.statemachine.HandlerResult;
 import com.codemind.agent.statemachine.StateHandler;
 import com.codemind.agent.statemachine.TerminalState;
 import com.codemind.agent.statemachine.pattern.ReactState;
+import com.codemind.agent.pattern.planexec.PlanState;
+import com.codemind.agent.pattern.planexec.PlanExecutionState;
 import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.LLMClient;
@@ -152,6 +154,21 @@ public class WorkflowOrchestrator {
                 String lastMsg = history.isEmpty() ? "" : history.get(history.size() - 1).getContent();
                 return AgentResult.success(
                     safetyChecker.sanitizeOutput(lastMsg != null ? lastMsg : ""));
+            } else if (reason == PlanState.PLAN_COMPLETE) {
+                circuitBreaker.recordSuccess();
+                PlanExecutionState pes = ctx.getVariable("_planExecutionState") instanceof PlanExecutionState
+                    ? (PlanExecutionState) ctx.getVariable("_planExecutionState") : null;
+                int completed = pes != null ? pes.getCompletedSteps().size() : 0;
+                int failed = pes != null ? pes.getFailedSteps().size() : 0;
+                outputHandler.accept(outputFormatter.formatPlanComplete(completed, failed));
+                List<Message> history = ctx.getHistory();
+                String lastMsg = history.isEmpty() ? "" : history.get(history.size() - 1).getContent();
+                return AgentResult.success(
+                    safetyChecker.sanitizeOutput(lastMsg != null ? lastMsg : ""));
+            } else if (reason == PlanState.PLAN_FAILED || reason == PlanState.PLAN_PARTIAL) {
+                circuitBreaker.recordFailure();
+                String reasonStr = (reason == PlanState.PLAN_FAILED) ? "计划执行失败" : "部分成功";
+                return AgentResult.failure(reasonStr);
             } else if (reason == TerminalState.ERROR
                     || reason == TerminalState.MAX_ITERATIONS
                     || reason == TerminalState.USER_INTERRUPT) {

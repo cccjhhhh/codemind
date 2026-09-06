@@ -460,4 +460,58 @@ public class DefaultOutputFormatter implements OutputFormatter {
         if (str.length() <= maxLength) return str;
         return str.substring(0, maxLength - 3) + "...";
     }
+
+    // ========== Plan-and-Execute 格式化方法 ====================
+
+    @Override
+    public String formatPlanGenerated(int stepCount, long estimatedTokens) {
+        return AnsiStyles.DIM + "\n⚡ " + AnsiStyles.RESET
+             + AnsiStyles.BOLD + AnsiStyles.CYAN + "[Plan]" + AnsiStyles.RESET
+             + AnsiStyles.DIM + " 已生成计划：" + stepCount + " 个步骤"
+             + "，预估 token " + estimatedTokens + AnsiStyles.RESET + "\n";
+    }
+
+    @Override
+    public String formatStepProgress(int current, int total, String stepId, String description) {
+        return AnsiStyles.DIM + "\n[" + AnsiStyles.RESET
+             + AnsiStyles.YELLOW + current + AnsiStyles.DIM + "/" + total + AnsiStyles.RESET
+             + AnsiStyles.DIM + "] " + AnsiStyles.BOLD + stepId + AnsiStyles.RESET
+             + " " + AnsiStyles.DIM + description + AnsiStyles.RESET;
+    }
+
+    @Override
+    public String formatStepComplete(String stepId, long durationMs) {
+        return AnsiStyles.DIM + "   " + AnsiStyles.RESET
+             + AnsiStyles.GREEN + "✓ " + AnsiStyles.RESET
+             + stepId + " " + AnsiStyles.DIM + formatDuration(durationMs) + AnsiStyles.RESET + "\n";
+    }
+
+    @Override
+    public String formatStepSkipped(String stepId, String reason) {
+        return AnsiStyles.DIM + "   " + AnsiStyles.RESET
+             + AnsiStyles.YELLOW + "○ " + AnsiStyles.RESET
+             + stepId + " " + AnsiStyles.DIM + "(" + reason + ")" + AnsiStyles.RESET + "\n";
+    }
+
+    @Override
+    public String formatReplanTriggered(String reason) {
+        return AnsiStyles.DIM + "\n⚠ " + AnsiStyles.RESET
+             + AnsiStyles.BOLD + AnsiStyles.YELLOW + "[Replan]" + AnsiStyles.RESET
+             + AnsiStyles.DIM + " 触发重规划: " + reason + AnsiStyles.RESET + "\n";
+    }
+
+    @Override
+    public String formatPlanComplete(int completed, int failed) {
+        String style = failed > 0 ? AnsiStyles.YELLOW : AnsiStyles.GREEN;
+        String icon = failed > 0 ? "⏳" : "✓";
+        return AnsiStyles.DIM + "\n" + AnsiStyles.BOLD + AnsiStyles.CYAN + "[Done]" + AnsiStyles.RESET
+             + " " + style + icon + AnsiStyles.RESET
+             + " 完成 " + completed + " 步" + (failed > 0 ? "，失败 " + failed + " 步" : "") + "\n";
+    }
+
+    @Override
+    public String formatSubAgentOffload(String stepId, String description) {
+        return AnsiStyles.DIM + "\n" + AnsiStyles.BOLD + "[SubAgent]" + AnsiStyles.RESET
+             + " " + stepId + ": " + description + "\n";
+    }
 }

@@ -199,6 +199,57 @@ public interface OutputFormatter {
         return "[" + model + "] " + formatDuration(sessionDurationMs);
     }
 
+    // ========== Plan-and-Execute 格式化方法 ====================
+
+    /**
+     * 格式化计划生成完成
+     */
+    default String formatPlanGenerated(int stepCount, long estimatedTokens) {
+        return "[Plan] Generated: " + stepCount + " steps, est. " + estimatedTokens + " tokens\n";
+    }
+
+    /**
+     * 格式化步骤执行进度
+     */
+    default String formatStepProgress(int current, int total, String stepId, String description) {
+        return "[" + current + "/" + total + "] " + stepId + ": " + description + "\n";
+    }
+
+    /**
+     * 格式化步骤完成
+     */
+    default String formatStepComplete(String stepId, long durationMs) {
+        return "  ✓ " + stepId + " (" + formatDuration(durationMs) + ")\n";
+    }
+
+    /**
+     * 格式化步骤跳过
+     */
+    default String formatStepSkipped(String stepId, String reason) {
+        return "  ○ " + stepId + " (skipped: " + reason + ")\n";
+    }
+
+    /**
+     * 格式化重规划触发
+     */
+    default String formatReplanTriggered(String reason) {
+        return "[Replan] Triggered: " + reason + "\n";
+    }
+
+    /**
+     * 格式化计划完成
+     */
+    default String formatPlanComplete(int completed, int failed) {
+        return "[Done] Completed: " + completed + ", Failed: " + failed + "\n";
+    }
+
+    /**
+     * 格式化子 Agent 卸载
+     */
+    default String formatSubAgentOffload(String stepId, String description) {
+        return "[SubAgent] " + stepId + ": " + description + "\n";
+    }
+
     /**
      * 格式化时长
      */

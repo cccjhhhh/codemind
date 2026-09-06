@@ -3,6 +3,9 @@ package com.codemind.bootstrap;
 import com.codemind.agent.AgentLoop;
 import com.codemind.agent.SystemPromptBuilder;
 import com.codemind.agent.engine.TokenBudget;
+import com.codemind.agent.pattern.planexec.PlanAgentPattern;
+import com.codemind.agent.pattern.react.ReactAgentPattern;
+import com.codemind.agent.spi.AgentPattern;
 import com.codemind.config.Settings;
 import com.codemind.config.SettingsLoader;
 import com.codemind.context.ContextCompressionOrchestrator;
@@ -46,18 +49,31 @@ public class CodeMindBootstrapper {
     private static final int DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS = 300;
 
     public BootstrapResult bootstrap(Path projectDir) {
-        return bootstrap(projectDir, 150, 300, null, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS);
+        return bootstrap(projectDir, 150, 300, null, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS, "react");
     }
 
-    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds, Path configPath) {
-        return bootstrap(projectDir, maxIterations, timeoutSeconds, configPath, DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS);
+    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds,
+                                      Path configPath) {
+        return bootstrap(projectDir, maxIterations, timeoutSeconds, configPath,
+            DEFAULT_LLM_STREAMING_TIMEOUT_SECONDS, "react");
     }
 
-    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds, Path configPath, int llmStreamingTimeoutSeconds) {
-        // 1. 基础设施
+    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds,
+                                      Path configPath, int llmStreamingTimeoutSeconds) {
+        return bootstrap(projectDir, maxIterations, timeoutSeconds, configPath,
+            llmStreamingTimeoutSeconds, "react");
+    }
+
+    public BootstrapResult bootstrap(Path projectDir, int maxIterations, int timeoutSeconds,
+                                      Path configPath, int llmStreamingTimeoutSeconds,
+                                      String agentPattern) {
         DefaultOutputFormatter outputFormatter = new DefaultOutputFormatter();
         CLIPermissionPrompter prompter = new CLIPermissionPrompter(outputFormatter);
         PermissionGateImpl permissionGate = new PermissionGateImpl(prompter);
+
+        // 3.5. Agent 模式选择
+        AgentPattern pattern = "plan".equalsIgnoreCase(agentPattern)
+            ? new PlanAgentPattern() : new ReactAgentPattern();
 
         // 2. 工具
         ToolRegistryImpl toolRegistry = new ToolRegistryImpl();
@@ -210,7 +226,8 @@ public class CodeMindBootstrapper {
             llmClient, toolRegistry, permissionGate, outputFormatter,
             effectiveMaxIterations, effectiveTimeout, effectiveLlmStreamingTimeout,
             skillRouter, promptBuilder,
-            compactionPipeline, tokenBudget
+            compactionPipeline, tokenBudget,
+            pattern
         );
 
         // 注册依赖 AgentLoop 的工具
