@@ -7,7 +7,8 @@ import com.codemind.agent.statemachine.pattern.ReactState;
 /**
  * Handler 执行结果，携带下一步状态。
  * <p>{@code nextReason} 字段为 {@link Object} 类型，运行时实际为三个枚举之一：
- * {@link ReactState}、{@link TerminalState}、{@link ContinueReason}。</p>
+ * {@link ReactState}、{@link TerminalState}、{@link ContinueReason}，以及新增的
+ * {@link com.codemind.agent.pattern.planexec.PlanState}。</p>
  */
 public record HandlerResult(Object nextReason, boolean countTurn) {
 
@@ -25,6 +26,13 @@ public record HandlerResult(Object nextReason, boolean countTurn) {
         return new HandlerResult(reason, true);
     }
 
+    /**
+     * Plan-and-Execute 范式专用工厂方法。
+     */
+    public static HandlerResult withCount(Object planState) {
+        return new HandlerResult(planState, true);
+    }
+
     // === withoutCount 工厂（不占用迭代计数） ===
 
     public static HandlerResult withoutCount(ReactState state) {
@@ -37,5 +45,12 @@ public record HandlerResult(Object nextReason, boolean countTurn) {
 
     public static HandlerResult withoutCount(ContinueReason reason) {
         return new HandlerResult(reason, false);
+    }
+
+    /**
+     * Plan-and-Execute 范式专用工厂方法。
+     */
+    public static HandlerResult withoutCount(Object planState) {
+        return new HandlerResult(planState, false);
     }
 }
