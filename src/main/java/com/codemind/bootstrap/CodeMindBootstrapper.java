@@ -28,7 +28,7 @@ import com.codemind.skill.ClasspathSkillProvider;
 import com.codemind.skill.DirectorySkillProvider;
 import com.codemind.skill.SkillDefinition;
 import com.codemind.skill.SkillRegistry;
-import com.codemind.skill.routing.ConfidenceSkillRouter;
+import com.codemind.skill.routing.Bm25SkillRouter;
 import com.codemind.skill.routing.SkillRouter;
 import com.codemind.tool.ToolRegistry;
 import com.codemind.tool.ToolRegistryImpl;
@@ -131,8 +131,8 @@ public class CodeMindBootstrapper {
         // 6. 大语言模型
         LLMClient llmClient = ModelFactory.create(modelManager.getCurrentModel());
 
-        // 7. 技能路由器（置信度路由 + 关键词兜底）
-        SkillRouter skillRouter = new ConfidenceSkillRouter(skills);
+        // 7. 技能路由器（BM25 语义路由 + 关键词兜底）
+        SkillRouter skillRouter = new Bm25SkillRouter(skills);
 
         // 8. 系统提示构建器
         SystemPromptBuilder promptBuilder = new SystemPromptBuilder(toolRegistry, skillRegistry);
