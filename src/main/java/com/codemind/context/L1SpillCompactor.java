@@ -49,6 +49,10 @@ public class L1SpillCompactor implements Compactor {
 
         for (int i = 0; i < result.size(); i++) {
             Message msg = result.get(i);
+            // 跳过受保护的索引
+            if (protectedReadIndices != null && protectedReadIndices.contains(i)) {
+                continue;
+            }
             if (msg.getRole() == Message.Role.TOOL && msg.getContent() != null
                     && msg.getContent().length() > spillThresholdChars) {
                 // 落盘到 spill 文件

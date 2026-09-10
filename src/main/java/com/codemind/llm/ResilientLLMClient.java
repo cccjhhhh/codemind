@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * 带重试和速率限制的 LLM 客户端包装器
@@ -113,7 +114,25 @@ public class ResilientLLMClient implements LLMClient {
                                     StreamHandler handler) {
         executeWithRetry(() -> {
             acquirePermit();
-            delegate.chatStreamWithTools(messages, tools, handler);
+            AtomicReference<Exception> errorRef = new AtomicReference<>();
+            StreamHandler wrappingHandler = new StreamHandler() {
+                @Override
+                public void onEvent(StreamEvent event) {
+                    if (event.isError()) {
+                        errorRef.set(event.getError());
+                    }
+                    handler.onEvent(event);
+                }
+                @Override
+                public void onError(Exception e) {
+                    errorRef.set(e);
+                    handler.onError(e);
+                }
+            };
+            delegate.chatStreamWithTools(messages, tools, wrappingHandler);
+            if (errorRef.get() != null) {
+                throw new LLMException("Stream error: " + errorRef.get().getMessage(), errorRef.get());
+            }
             return null;
         });
     }
@@ -123,7 +142,25 @@ public class ResilientLLMClient implements LLMClient {
                                     StreamHandler handler, int maxTokens) {
         executeWithRetry(() -> {
             acquirePermit();
-            delegate.chatStreamWithTools(messages, tools, handler, maxTokens);
+            AtomicReference<Exception> errorRef = new AtomicReference<>();
+            StreamHandler wrappingHandler = new StreamHandler() {
+                @Override
+                public void onEvent(StreamEvent event) {
+                    if (event.isError()) {
+                        errorRef.set(event.getError());
+                    }
+                    handler.onEvent(event);
+                }
+                @Override
+                public void onError(Exception e) {
+                    errorRef.set(e);
+                    handler.onError(e);
+                }
+            };
+            delegate.chatStreamWithTools(messages, tools, wrappingHandler, maxTokens);
+            if (errorRef.get() != null) {
+                throw new LLMException("Stream error: " + errorRef.get().getMessage(), errorRef.get());
+            }
             return null;
         });
     }
@@ -163,7 +200,28 @@ public class ResilientLLMClient implements LLMClient {
                 return operation.execute();
 
             } catch (RuntimeException e) {
-                throw e;
+                // RuntimeException 也检查是否可重试（如 429/5xx/timeout）
+                if (!shouldRetry(e) || attempt > maxRetries) {
+                    // 不可重试的异常包装为 LLMException，保持与 Checked Exception 一致
+                    throw new LLMException("LLM API 调用失败: " + e.getMessage(), e);
+                }
+
+                log.warn("LLM API 调用失败（RuntimeException），准备重试 (attempt {}/{}): {}",
+                         attempt, maxRetries, e.getMessage());
+
+                // 指数退避 + jitter
+                long baseBackoff = Math.min(initialBackoffMs * (1L << (attempt - 1)), maxBackoffMs);
+                long jitter = (long) (baseBackoff * 0.25 * RANDOM.nextDouble());
+                long sleepMs = baseBackoff + jitter;
+
+                try {
+                    TimeUnit.MILLISECONDS.sleep(sleepMs);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new LLMException("Retry interrupted", ie);
+                }
+
+                backoffMs = Math.min(backoffMs * 2, maxBackoffMs);
             } catch (Exception e) {
                 // 判断是否可重试
                 if (!shouldRetry(e) || attempt > maxRetries) {
