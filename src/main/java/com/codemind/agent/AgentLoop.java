@@ -89,7 +89,17 @@ public class AgentLoop {
             if (safetyResult != null) return safetyResult;
 
             if (context.hasActiveSkill()) context.clearActiveSkill();
-            tryActivateSkill(input, context);
+            // 不做自动激活：skill 路由结果存入 context 变量供 ThinkHandler 后续使用
+            if (skillRouter != null) {
+                SkillRouteDto route = skillRouter.route(input);
+                if (route != null) {
+                    context.setVariable("_suggestedSkill", route.skill());
+                    context.setVariable("_suggestedSkillReason",
+                        "Skill '" + route.skill().getName() + "' detected for this request.");
+                    log.debug("Skill 路由建议: {} (置信度: {:.2f})",
+                        route.skill().getName(), route.confidence());
+                }
+            }
 
             context.addMessage(Message.user(input));
             return orchestrator.execute(context, outputHandler, System.currentTimeMillis(), safetyChecker);
@@ -118,14 +128,6 @@ public class AgentLoop {
         return null;
     }
 
-    private boolean tryActivateSkill(String input, SessionContext context) {
-        if (skillRouter == null) return false;
-        SkillRouteDto route = skillRouter.route(input);
-        if (route == null || !route.shouldExecute()) return false;
-        context.setActiveSkill(route.skill());
-        return true;
-    }
-
     // ==================== 子 Agent ====================
 
     public AgentLoop createSubAgent() {
@@ -134,7 +136,11 @@ public class AgentLoop {
             orchestrator.getToolRegistry(),
             permissionGate,
             orchestrator.getOutputFormatter(),
-            15, 60, 30, null, null, null, null
+            15, 60, 30,
+            skillRouter,
+            orchestrator.getPromptBuilder(),
+            orchestrator.getCompactionPipeline(),
+            orchestrator.getTokenBudget()
         );
     }
 }

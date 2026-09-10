@@ -73,7 +73,7 @@ public class SystemPromptBuilder {
         }
         sb.append("\n");
 
-        // 4. AVAILABLE SKILLS (summaries only — full content loaded on activation)
+        // 4. AVAILABLE SKILLS (summaries only — full content injected as user message at runtime)
         List<SkillEntry> allSkills = skillRegistry.listAll();
         if (!allSkills.isEmpty()) {
             sb.append("## Available Skills\n\n");
@@ -86,20 +86,7 @@ public class SystemPromptBuilder {
                 sb.append("- **").append(entry.name()).append("**");
                 sb.append(": ").append(desc).append("\n");
             }
-            sb.append("\nSkills activate automatically when the system detects a matching request. ");
-            sb.append("You can also call LoadSkill to manually load a skill.\n\n");
-        }
-
-        // 5. ACTIVE SKILL (conditionally injected)
-        if (context.hasActiveSkill()) {
-            SkillDefinition active = context.getActiveSkill();
-            sb.append("══════════════════════════════════════════════\n");
-            sb.append("## Active Skill: ").append(active.getName()).append("\n");
-            sb.append("══════════════════════════════════════════════\n\n");
-            sb.append(active.getFullContent()).append("\n\n");
-            sb.append("══════════════════════════════════════════════\n");
-            sb.append("Follow the skill instructions above strictly.\n");
-            sb.append("══════════════════════════════════════════════\n");
+            sb.append("\nCall LoadSkill to activate a skill when needed.\n\n");
         }
 
         return sb.toString();

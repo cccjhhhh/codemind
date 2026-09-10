@@ -12,6 +12,7 @@ import com.codemind.context.ContextCompressionOrchestrator;
 import com.codemind.frontend.output.spi.OutputFormatter;
 import com.codemind.llm.*;
 import com.codemind.session.SessionContext;
+import com.codemind.skill.SkillDefinition;
 import com.codemind.tool.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -78,16 +79,52 @@ public class ThinkHandler implements StateHandler {
         return new HandlerResult(reason, countTurn);
     }
 
+    // ==================== Skill 惰性注入 ====================
+
+    /**
+     * 如果 context 中有路由建议的 skill，将其内容注入为 user message。
+     * 与旧方案的区别：
+     * - 旧：skill full content 注入到 system prompt → 不可压缩
+     * - 新：skill full content 注入到 user message → 参与四级压缩管线
+     */
+    private void injectActiveSkill(SessionContext ctx) {
+        Object suggestedSkill = ctx.getVariable("_suggestedSkill");
+        if (!(suggestedSkill instanceof SkillDefinition)) return;
+        SkillDefinition skill = (SkillDefinition) suggestedSkill;
+        String reason = (String) ctx.getVariable("_suggestedSkillReason");
+
+        // 检查是否已经注入过（避免重复）
+        List<Message> history = ctx.getHistory();
+        for (int i = history.size() - 1; i >= Math.max(0, history.size() - 5); i--) {
+            Message msg = history.get(i);
+            if (msg.getContent() != null && msg.getContent().contains("=== Active Skill: " + skill.getName())) {
+                return; // 已注入，跳过
+            }
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("=== Active Skill: ").append(skill.getName()).append(" ===\n\n");
+        if (reason != null) sb.append(reason).append("\n\n");
+        sb.append(skill.getFullContent()).append("\n\n");
+        sb.append("=== Follow the skill instructions above ===\n");
+        ctx.addMessage(Message.user(sb.toString()));
+        log.debug("Skill '{}' 已注入为 user message（惰性加载）", skill.getName());
+    }
+
     // ==================== THINK 核心 ====================
 
     private Object think(ExecutionState state) {
         SessionContext ctx = state.sessionContext;
         Consumer<String> outputHandler = state.outputHandler;
 
-        // 1. 构建 system prompt
+        // 1. 构建 system prompt（不再包含 skill full content）
         if (promptBuilder != null) {
             ctx.setSystemMessage(promptBuilder.build(ctx));
         }
+
+        // 1.5. Skill 惰性注入：将路由建议的 skill 内容注入为 user message
+        // 这样 skill 内容参与压缩管线，而非永久占用 system prompt
+        injectActiveSkill(ctx);
 
         // 2. 获取原始消息并执行压缩管线（单入口）
         List<Message> messages = ctx.getHistory();
