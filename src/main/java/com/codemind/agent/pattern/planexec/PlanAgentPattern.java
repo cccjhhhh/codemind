@@ -3,6 +3,7 @@ package com.codemind.agent.pattern.planexec;
 import com.codemind.agent.SystemPromptBuilder;
 import com.codemind.agent.engine.ExecutionState;
 import com.codemind.agent.engine.TokenBudget;
+import com.codemind.agent.pattern.planexec.compaction.PlanAwareCompactor;
 import com.codemind.agent.pattern.planexec.handler.*;
 import com.codemind.agent.spi.AgentPattern;
 import com.codemind.agent.statemachine.StateHandler;
@@ -57,8 +58,9 @@ public class PlanAgentPattern implements AgentPattern {
         map.put(PlanState.PLAN_VALIDATE, new PlanValidateHandler(toolRegistry));
 
         // === 执行阶段 ===
+        PlanAwareCompactor planCompactor = new PlanAwareCompactor();
         map.put(PlanState.STEP_EXECUTE, new StepExecuteHandler(
-            toolRegistry, outputFormatter, fileContentCache));
+            toolRegistry, outputFormatter, fileContentCache, planCompactor, tokenBudget));
         map.put(PlanState.STEP_VERIFY, new StepVerifyHandler(llmClient, outputFormatter));
 
         // === 恢复阶段 ===
@@ -69,6 +71,9 @@ public class PlanAgentPattern implements AgentPattern {
             llmClient, toolRegistry, true, outputFormatter));
         map.put(PlanState.SUB_AGENT_OFFLOAD, new SubAgentOffloadHandler(outputFormatter));
         map.put(PlanState.COMPACT_CONTEXT, new CompactContextHandler(compacter));
+        // STEP_SKIPPED 和 PLAN_PARTIAL 的 Handler（之前缺失导致 NPE）
+        map.put(PlanState.STEP_SKIPPED, new StepSkipHandler(outputFormatter));
+        map.put(PlanState.PLAN_PARTIAL, new PlanPartialHandler(outputFormatter, fileContentCache));
 
         return map;
     }
