@@ -11,6 +11,8 @@ import com.codemind.session.SessionContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * StepRetryHandler — 单步重试（指数退避 1s）。
  *
@@ -30,6 +32,12 @@ public class StepRetryHandler implements StateHandler {
 
         // 重置连续失败计数
         pes.setConsecutiveFailures(0);
+        // 加 1s 等待，给系统喘息时间
+        try {
+            TimeUnit.SECONDS.sleep(1);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
         log.info("步骤重试：重置连续失败计数，重新执行 {}", pes.currentStep() != null ? pes.currentStep().id() : "当前步骤");
 
         return HandlerResult.withCount(PlanState.STEP_EXECUTE);

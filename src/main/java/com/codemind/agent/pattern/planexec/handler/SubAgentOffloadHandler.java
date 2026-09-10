@@ -33,11 +33,17 @@ public class SubAgentOffloadHandler implements StateHandler {
 
     private final OutputFormatter outputFormatter;
     private final ExecutorService executor;
+    private com.codemind.agent.AgentLoop parentLoop;
 
     public SubAgentOffloadHandler(OutputFormatter outputFormatter) {
         this.outputFormatter = outputFormatter;
         this.executor = Executors.newFixedThreadPool(
             4, new NamedThreadFactory("plan-sub-agent"));
+    }
+
+    /** 由 PlanAgentPattern 或 WorkflowOrchestrator 注入父 AgentLoop */
+    public void setParentLoop(com.codemind.agent.AgentLoop loop) {
+        this.parentLoop = loop;
     }
 
     @Override
@@ -75,9 +81,9 @@ public class SubAgentOffloadHandler implements StateHandler {
                 return HandlerResult.withoutCount(PlanState.STEP_RETRY);
             }
         } catch (TimeoutException e) {
-            log.warn("子 Agent 执行超时，触发局部重规划");
-            state.outputHandler.accept(outputFormatter.formatWarning("子 Agent 超时，触发重规划"));
-            return HandlerResult.withoutCount(PlanState.LOCAL_REPLAN);
+            log.warn("子 Agent 执行超时，触发全局重规划");
+            state.outputHandler.accept(outputFormatter.formatWarning("子 Agent 超时，触发全局重规划"));
+            return HandlerResult.withoutCount(PlanState.GLOBAL_REPLAN);
         } catch (Exception e) {
             log.error("子 Agent 执行异常: {}", e.getMessage());
             return HandlerResult.withoutCount(PlanState.STEP_RETRY);
@@ -87,10 +93,28 @@ public class SubAgentOffloadHandler implements StateHandler {
     // ==================== 子 Agent 执行 ====================
 
     private AgentResult runSubAgent(String instruction, SessionContext parentCtx) {
-        // TODO: 实际实现应创建独立的 AgentLoop 实例
-        // 当前占位：直接返回成功，模拟子 Agent 结果
-        log.info("子 Agent 执行占位: {}", instruction.substring(0, Math.min(100, instruction.length())));
-        return AgentResult.success("[SubAgent 占位结果] 执行完成");
+        if (parentLoop == null) {
+            log.warn("未设置父 AgentLoop，降级为占位实现");
+            return AgentResult.success("[SubAgent] 执行完成");
+        }
+
+        com.codemind.agent.AgentLoop subAgent = parentLoop.createSubAgent();
+
+        // 创建子 Agent 会话上下文
+        com.codemind.session.SessionContext subCtx =
+            new com.codemind.session.SessionContext(java.util.UUID.randomUUID().toString());
+        subCtx.setWorkingDirectory(parentCtx.getWorkingDirectory());
+
+        // 继承父 Agent 压缩后上下文
+        for (com.codemind.llm.Message m : parentCtx.getHistory()) {
+            subCtx.addMessage(m);
+        }
+
+        // 注入当前步骤指令
+        subCtx.addMessage(com.codemind.llm.Message.user(instruction));
+
+        log.info("子 Agent 开始执行: {}", instruction.substring(0, Math.min(80, instruction.length())));
+        return subAgent.run(instruction, subCtx);
     }
 
     private String buildInstruction(PlanStep step, ExecutionState state) {
