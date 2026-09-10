@@ -1,11 +1,14 @@
 package com.codemind.agent.pattern.planexec.handler;
 
 import com.codemind.agent.engine.ExecutionState;
+import com.codemind.agent.engine.TokenBudget;
 import com.codemind.agent.engine.ToolPartitioner;
 import com.codemind.agent.pattern.planexec.*;
+import com.codemind.agent.pattern.planexec.compaction.PlanAwareCompactor;
 import com.codemind.agent.statemachine.HandlerResult;
 import com.codemind.agent.statemachine.StateHandler;
 import com.codemind.frontend.output.spi.OutputFormatter;
+import com.codemind.llm.Message;
 import com.codemind.llm.ToolCall;
 import com.codemind.session.SessionContext;
 import com.codemind.tool.ToolRegistry;
@@ -46,14 +49,20 @@ public class StepExecuteHandler implements StateHandler {
     private final OutputFormatter outputFormatter;
     private final Map<String, String> fileContentCache;
     private final ExecutorService toolExecutor;
+    private final PlanAwareCompactor compactor;
+    private final TokenBudget tokenBudget;
 
     public StepExecuteHandler(ToolRegistry toolRegistry,
                               OutputFormatter outputFormatter,
-                              Map<String, String> fileContentCache) {
+                              Map<String, String> fileContentCache,
+                              PlanAwareCompactor compactor,
+                              TokenBudget tokenBudget) {
         this.toolRegistry = toolRegistry;
         this.outputFormatter = outputFormatter;
         this.fileContentCache = fileContentCache;
         this.toolExecutor = ThreadPoolConfig.TOOL_EXEC;
+        this.compactor = compactor;
+        this.tokenBudget = tokenBudget;
     }
 
     @Override
@@ -76,6 +85,26 @@ public class StepExecuteHandler implements StateHandler {
         int current = pes.getCurrentStepIndex();
         int total = pes.getPlan().steps().size();
         outputHandler.accept(outputFormatter.formatStepProgress(current, total, step.id(), step.description()));
+
+        // Plan-aware 压缩：在执行前注入 step 上下文，压缩旧历史
+        List<Message> history = ctx.getHistory();
+        if (compactor != null && history.size() > 10) {
+            try {
+                List<Message> compacted = compactor.compact(history, step, pes.getPlan());
+                if (compacted.size() < history.size()) {
+                    log.info("Plan-aware 压缩: {} → {} 条消息", history.size(), compacted.size());
+                    // 保留 system message，替换对话部分
+                    Message sysMsg = ctx.getSystemMessage();
+                    ctx.clearHistory();
+                    if (sysMsg != null) ctx.addMessage(sysMsg);
+                    for (Message m : compacted) {
+                        ctx.addMessage(m);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Plan-aware 压缩失败，继续使用原始历史: {}", e.getMessage());
+            }
+        }
 
         // L0: 检查前置步骤依赖
         if (!checkDependencies(step, pes)) {
@@ -113,6 +142,13 @@ public class StepExecuteHandler implements StateHandler {
         pes.addCompletedStep(result);
         pes.advance();
         outputHandler.accept(outputFormatter.formatStepComplete(step.id(), result.durationMs()));
+
+        // 步间 Token 检查：如果历史过长，主动触发压缩再进入下一步
+        if (tokenBudget != null && tokenBudget.needsCompact(ctx.getHistory())) {
+            log.warn("步骤 {} 完成后 token 使用率超标，触发 COMPACT_CONTEXT", step.id());
+            return HandlerResult.withoutCount(PlanState.COMPACT_CONTEXT);
+        }
+
         return HandlerResult.withCount(PlanState.STEP_VERIFY);
     }
 
@@ -181,10 +217,13 @@ public class StepExecuteHandler implements StateHandler {
                                                    Consumer<String> outputHandler) {
         List<Callable<ToolResult>> tasks = new ArrayList<>();
         for (ToolCall tc : batch) {
+            final ToolCall finalTC = tc;
             tasks.add(() -> {
                 outputHandler.accept(outputFormatter.formatToolCallStart(
                     tc.getName(), tc.getArguments()));
                 ToolResult r = toolRegistry.execute(tc.getName(), tc.getArguments());
+                r.setToolName(finalTC.getName());
+                r.setArgumentsKey(finalTC.getArguments() != null ? finalTC.getArguments().toString() : "");
                 outputHandler.accept(outputFormatter.formatToolCallEnd(
                     tc.getName(), r));
                 return r;
@@ -249,11 +288,16 @@ public class StepExecuteHandler implements StateHandler {
         outputHandler.accept(outputFormatter.formatToolCallStart(tc.getName(), tc.getArguments()));
         try {
             ToolResult result = toolRegistry.execute(tc.getName(), tc.getArguments());
+            result.setToolName(tc.getName());
+            result.setArgumentsKey(tc.getArguments() != null ? tc.getArguments().toString() : "");
             outputHandler.accept(outputFormatter.formatToolCallEnd(tc.getName(), result));
             return result;
         } catch (Exception e) {
             outputHandler.accept(outputFormatter.formatError("工具 " + tc.getName() + " 异常: " + e.getMessage()));
-            return ToolResult.failure(e.getMessage());
+            ToolResult result = ToolResult.failure(e.getMessage());
+            result.setToolName(tc.getName());
+            result.setArgumentsKey(tc.getArguments() != null ? tc.getArguments().toString() : "");
+            return result;
         }
     }
 
@@ -298,9 +342,15 @@ public class StepExecuteHandler implements StateHandler {
             .orElse("");
     }
 
-    private ToolResult findResult(List<ToolResult> results, ToolCall tc) {
+    /** Visible for testing. */
+    public ToolResult findResult(List<ToolResult> results, ToolCall tc) {
+        String toolName = tc.getName();
+        String argsKey = tc.getArguments() != null ? tc.getArguments().toString() : null;
         for (ToolResult r : results) {
-            // 简化匹配，实际可根据 tool call id 匹配
+            if (toolName.equals(r.getToolName())
+                    && Objects.equals(argsKey, r.getArgumentsKey())) {
+                return r;
+            }
         }
         return ToolResult.failure("not found");
     }

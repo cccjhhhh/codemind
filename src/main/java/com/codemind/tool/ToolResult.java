@@ -8,6 +8,8 @@ public class ToolResult {
     private boolean success;
     private String output;
     private final String error;
+    private String toolName;
+    private String argumentsKey;
 
     public ToolResult(boolean success, String output, String error) {
         this.success = success;
@@ -26,6 +28,11 @@ public class ToolResult {
     public boolean isSuccess() { return success; }
     public String getOutput() { return output; }
     public String getError() { return error; }
+    public String getToolName() { return toolName; }
+    public String getArgumentsKey() { return argumentsKey; }
+
+    public void setToolName(String toolName) { this.toolName = toolName; }
+    public void setArgumentsKey(String argumentsKey) { this.argumentsKey = argumentsKey; }
 
     /** 替换输出内容（用于钩子进行大结果替换） */
     public void setOutput(String newOutput) {
