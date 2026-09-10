@@ -107,6 +107,10 @@ public class WorkflowOrchestrator {
     public LLMClient getLlmClient() { return llmClient; }
     public ToolRegistry getToolRegistry() { return toolRegistry; }
     public OutputFormatter getOutputFormatter() { return outputFormatter; }
+    public com.codemind.skill.routing.SkillRouter getSkillRouter() { return null; } // 子 Agent 不继承路由
+    public SystemPromptBuilder getPromptBuilder() { return promptBuilder; }
+    public ContextCompressionOrchestrator getCompactionPipeline() { return compactionPipeline; }
+    public TokenBudget getTokenBudget() { return tokenBudget; }
 
     // ==================== 主入口 ====================
 
@@ -165,10 +169,21 @@ public class WorkflowOrchestrator {
                 String lastMsg = history.isEmpty() ? "" : history.get(history.size() - 1).getContent();
                 return AgentResult.success(
                     safetyChecker.sanitizeOutput(lastMsg != null ? lastMsg : ""));
-            } else if (reason == PlanState.PLAN_FAILED || reason == PlanState.PLAN_PARTIAL) {
+            } else if (reason == PlanState.PLAN_FAILED) {
                 circuitBreaker.recordFailure();
-                String reasonStr = (reason == PlanState.PLAN_FAILED) ? "计划执行失败" : "部分成功";
-                return AgentResult.failure(reasonStr);
+                return AgentResult.failure("计划执行失败");
+            } else if (reason == PlanState.PLAN_PARTIAL) {
+                // 部分成功：返回已完成步骤摘要，走 success 路径
+                circuitBreaker.recordSuccess();
+                PlanExecutionState pes = ctx.getVariable("_planExecutionState") instanceof PlanExecutionState
+                    ? (PlanExecutionState) ctx.getVariable("_planExecutionState") : null;
+                int completed = pes != null ? pes.getCompletedSteps().size() : 0;
+                int failed = pes != null ? pes.getFailedSteps().size() : 0;
+                outputHandler.accept(outputFormatter.formatPlanComplete(completed, failed));
+                List<Message> history = ctx.getHistory();
+                String lastMsg = history.isEmpty() ? "" : history.get(history.size() - 1).getContent();
+                return AgentResult.success(
+                    safetyChecker.sanitizeOutput(lastMsg != null ? lastMsg : ""));
             } else if (reason == TerminalState.ERROR
                     || reason == TerminalState.MAX_ITERATIONS
                     || reason == TerminalState.USER_INTERRUPT) {
