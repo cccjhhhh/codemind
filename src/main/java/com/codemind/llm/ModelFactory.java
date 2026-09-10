@@ -48,7 +48,7 @@ public class ModelFactory {
                     config.getApiKey(),
                     config.getBaseUrl(),
                     config.getDefaultModel(),
-                    4096,
+                    resolveMaxTokens(config.getDefaultModel()),
                     0.7
                 );
                 
@@ -64,5 +64,33 @@ public class ModelFactory {
             default:
                 throw new IllegalArgumentException("不支持的模型类型: " + type);
         }
+    }
+
+    /**
+     * 根据模型名称动态解析 max_tokens。
+     * 现代模型上下文窗口至少 200K tokens，响应预算按窗口比例分配：
+     * - 极速/小模型（flash/haiku）: 16K
+     * - 中等模型（sonnet/glm-4/deepseek-chat）: 32K
+     * - 旗舰模型（opus/gpt-4o/o1）: 64K
+     * - plan 生成和重规划可进一步指定更大值（通过调用方传参覆盖）
+     */
+    private static int resolveMaxTokens(String modelId) {
+        if (modelId == null) return 16384;
+        String lower = modelId.toLowerCase();
+        if (lower.contains("flash") || lower.contains("haiku") || lower.contains("nano")) {
+            return 16384;
+        }
+        if (lower.contains("sonnet") || lower.contains("glm-4") ||
+            lower.contains("deepseek-chat") || lower.contains("kimi") ||
+            lower.contains("qwq") || lower.contains("qwen2.5")) {
+            return 32768;
+        }
+        if (lower.contains("opus") || lower.contains("gpt-4o") ||
+            lower.contains("o1") || lower.contains("claude") ||
+            lower.contains("pro") || lower.contains("v3")) {
+            return 65536;
+        }
+        // 默认按中等模型处理
+        return 32768;
     }
 }

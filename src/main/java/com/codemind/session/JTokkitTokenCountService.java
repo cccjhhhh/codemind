@@ -41,7 +41,7 @@ public class JTokkitTokenCountService implements TokenCountService {
     private static final EncodingType DEFAULT_ENCODING = EncodingType.CL100K_BASE;
     
     // 默认上下文窗口（用于未知模型）
-    private static final int DEFAULT_MAX_CONTEXT = 8192;
+    private static final int DEFAULT_MAX_CONTEXT = 200000;
     
     // 兼容模型的上下文窗口（key = 模型名，value = 最大窗口 token 数）
     // DeepSeek V4: 200K 上下文（用户确认）
