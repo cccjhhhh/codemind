@@ -53,9 +53,9 @@ public class L2SnipCompactor implements Compactor {
 
     /**
      * 触发阈值：当 token 使用率超过此值时触发 L2 Snip
-     * 默认 60%，在 L4 之前触发
+     * 默认 50%，在 L4 之前触发
      */
-    private static final double L2_TRIGGER_RATIO = 0.60;
+    private static final double L2_TRIGGER_RATIO = 0.50;
 
     /**
      * Token 计数服务（复用已有的 JTokkitTokenCountService）
@@ -97,43 +97,25 @@ public class L2SnipCompactor implements Compactor {
         // 计算轮次边界
         List<int[]> roundBounds = findRoundBounds(messages);
 
-        int headEnd = KEEP_HEAD_ROUNDS;
-
-        // 动态计算尾部 token 预算（基于对话轮次）
-        int totalRounds = roundBounds.size();
-        int tailTokenBudget = calculateDynamicBudget(totalRounds);
-        log.debug("L2 Snip: 动态尾部预算 {} tokens (基于 {} 轮对话)", tailTokenBudget, totalRounds);
-
-        // 基于 token 预算计算尾部起始位置
-        int tailStart = findTailByTokenBudget(messages, headEnd, tailTokenBudget);
-
-        // 确保至少保留 MIN_TAIL_MESSAGES 条消息
-        int minTailStart = Math.max(headEnd + 1, messages.size() - MIN_TAIL_MESSAGES);
-        tailStart = Math.min(tailStart, minTailStart);
-
-        // 确保 headEnd < tailStart
-        if (headEnd >= tailStart) {
-            log.debug("L2 Snip: headEnd {} >= tailStart {}，跳过", headEnd, tailStart);
+        // 新策略：每次删除最旧 3 轮（渐进式，避免振荡）
+        int deleteRounds = Math.min(3, Math.max(0, roundBounds.size() - 3));
+        if (deleteRounds <= 0) {
+            log.debug("L2 Snip: 轮次不足，跳过 ({})", roundBounds.size());
             return messages;
         }
 
-        // 转换为消息索引
-        int headMsgIndex = headEnd < roundBounds.size() ? roundBounds.get(headEnd)[0] : messages.size();
-        int tailMsgIndex = tailStart < roundBounds.size() ? roundBounds.get(tailStart)[0] : messages.size();
+        log.debug("L2 Snip: 删除最旧 {} 轮，保留 {} 轮", deleteRounds, roundBounds.size() - deleteRounds);
 
-        // 边界保护：确保 tool_use 和 tool_result 不分离
-        headMsgIndex = adjustForToolPairs(messages, headMsgIndex, true);
-        tailMsgIndex = adjustForToolPairs(messages, tailMsgIndex, false);
-
-        // 中间全部删除
-        int snipped = tailMsgIndex - headMsgIndex;
+        // 从第 deleteRounds 轮开始收集
         List<Message> result = new ArrayList<>();
-        result.addAll(messages.subList(0, headMsgIndex));
-        result.add(Message.assistant("[snipped " + snipped + " messages from conversation middle]"));
-        result.addAll(messages.subList(tailMsgIndex, messages.size()));
+        for (int i = deleteRounds; i < roundBounds.size(); i++) {
+            int[] b = roundBounds.get(i);
+            for (int j = b[0]; j <= b[1] && j < messages.size(); j++) {
+                result.add(messages.get(j));
+            }
+        }
 
-        log.info("L2 Snip: 删除 {} 条消息（前 {} 轮 + 后约 {} tokens）",
-            snipped, headEnd, tailTokenBudget);
+        log.info("L2 Snip: 删除最旧 {} 轮，保留 {} 条消息", deleteRounds, result.size());
         return result;
     }
 

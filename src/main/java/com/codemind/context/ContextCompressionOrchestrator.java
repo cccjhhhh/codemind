@@ -35,7 +35,7 @@ public class ContextCompressionOrchestrator {
     private final List<Compactor> compactors;
     private final L4SummaryCompactor l4SummaryCompactor;
     private final long maxExecutionTimeMs;
-    private final double compactOnRatio;        // token 百分比触发阈值（0.70 = 70%）
+    private final double compactOnRatio;        // token 百分比触发阈值（0.60 = 60%）
     private final TokenBudget tokenBudget;      // 用于百分比检查（可为 null）
     private int consecutiveFailures = 0;
 

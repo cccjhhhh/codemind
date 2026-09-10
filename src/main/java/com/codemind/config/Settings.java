@@ -91,7 +91,7 @@ public class Settings {
         private int maxMessagesBeforeSnip = 50;
         private int keepRecentToolResults = 3;
         private int budgetMaxBytes = 200000;
-        private double compactOnRatio = 0.70;
+        private double compactOnRatio = 0.60;
         private int maxConsecutiveFailures = 3;
         private boolean saveTranscripts = true;
         private int compressOnRounds = 30;

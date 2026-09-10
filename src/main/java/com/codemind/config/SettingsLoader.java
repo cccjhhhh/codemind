@@ -103,7 +103,7 @@ public class SettingsLoader {
                     target.getContext().getCompaction().setKeepRecentToolResults(source.getContext().getCompaction().getKeepRecentToolResults());
                 if (source.getContext().getCompaction().getBudgetMaxBytes() != 200000)
                     target.getContext().getCompaction().setBudgetMaxBytes(source.getContext().getCompaction().getBudgetMaxBytes());
-                if (source.getContext().getCompaction().getCompactOnRatio() != 0.70)
+                if (source.getContext().getCompaction().getCompactOnRatio() != 0.60)
                     target.getContext().getCompaction().setCompactOnRatio(source.getContext().getCompaction().getCompactOnRatio());
                 if (source.getContext().getCompaction().getMaxConsecutiveFailures() != 3)
                     target.getContext().getCompaction().setMaxConsecutiveFailures(source.getContext().getCompaction().getMaxConsecutiveFailures());

@@ -45,11 +45,11 @@ public class TokenBudget {
     }
 
     /**
-     * 紧急摘要触发 — 仅当 token 使用率 > 95% 时触发 L4。
+     * 紧急摘要触发 — 仅当 token 使用率 > 85% 时触发 L4。
      * 正常 L1-L3 压缩由 ContextCompressionOrchestrator 基于 compactOnRatio 触发。
      * 这是最后的逃生阀，防止上下文溢出。
      */
     public boolean needsCompact(List<Message> messages) {
-        return getUsageRatio(messages) > 0.95;
+        return getUsageRatio(messages) > 0.85;
     }
 }
