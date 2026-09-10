@@ -45,7 +45,6 @@ public class PlanGenerateHandler implements StateHandler {
     private static final Logger log = LoggerFactory.getLogger(PlanGenerateHandler.class);
 
     private static final int MAX_PLAN_ATTEMPTS = 3;
-    private static final int MAX_STEPS_SOFT = 15;
     private static final int MAX_STEPS_HARD = 30;
 
     // JSON 块提取正则
