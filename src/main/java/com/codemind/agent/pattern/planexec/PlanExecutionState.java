@@ -33,11 +33,14 @@ public class PlanExecutionState {
     /** 连续失败次数（用于触发 LOCAL_REPLAN） */
     private int consecutiveFailures;
 
+    /** 重规划尝试次数 */
+    private int replanAttempt = 0;
+
+    /** 最大重规划尝试次数 */
+    public static final int MAX_REPLAN_ATTEMPTS = 2;
+
     /** 计划开始时间（毫秒） */
     private final long startTimeMs;
-
-    /** 步骤输出缓存（stepId → actualOutput），用于依赖解析 */
-    private final java.util.Map<String, String> stepOutputs = new java.util.LinkedHashMap<>();
 
     /** 计划唯一 ID（用于 trace） */
     private final String planId;
@@ -80,9 +83,6 @@ public class PlanExecutionState {
 
     public void addCompletedStep(StepResult result) {
         completedSteps.add(result);
-        if (result.actualOutput() != null) {
-            stepOutputs.put(result.stepId(), result.actualOutput());
-        }
         consecutiveFailures = 0;
     }
 
@@ -107,9 +107,10 @@ public class PlanExecutionState {
     public List<StepResult> getFailedSteps() { return failedSteps; }
     public int getConsecutiveFailures() { return consecutiveFailures; }
     public void setConsecutiveFailures(int n) { this.consecutiveFailures = n; }
+    public boolean canReplan() { return replanAttempt < MAX_REPLAN_ATTEMPTS; }
+    public void recordReplan() { replanAttempt++; }
     public long getElapsedMs() { return System.currentTimeMillis() - startTimeMs; }
     public String getPlanId() { return planId; }
     public int getCurrentStepIndex() { return currentStepIndex; }
-    public void setStepOutputs(java.util.Map<String, String> outputs) { this.stepOutputs.clear(); this.stepOutputs.putAll(outputs); }
     public ExecutionPlan getPlan() { return plan; }
 }

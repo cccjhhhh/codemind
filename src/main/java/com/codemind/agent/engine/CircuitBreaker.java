@@ -11,9 +11,7 @@ import org.slf4j.LoggerFactory;
  * - OPEN：熔断状态，拒绝执行，等待冷却时间
  * - HALF_OPEN：半开状态，允许少量测试请求
  *
- * 触发条件：
- * - 连续失败次数超过阈值
- * - 或连续重复工具调用超过阈值
+ * 触发条件：连续失败次数超过阈值
  */
 public class CircuitBreaker {
 
@@ -32,29 +30,23 @@ public class CircuitBreaker {
     /** 连续失败计数 */
     private int failureCount = 0;
 
-    /** 连续重复工具调用计数 */
-    private int consecutiveRepeatCount = 0;
-
     /** 上次熔断时间 */
     private long lastOpenTime = 0;
 
     /** 配置参数 */
-    private final int failureThreshold;      // 失败阈值
-    private final int repeatThreshold;       // 重复阈值
-    private final long cooldownMs;           // 冷却时间（毫秒）
-    private final int halfOpenMaxAttempts;   // 半开状态最大尝试次数
+    private final int failureThreshold;
+    private final long cooldownMs;
+    private final int halfOpenMaxAttempts;
 
     /** 半开状态尝试计数 */
     private int halfOpenAttempts = 0;
 
     public CircuitBreaker() {
-        this(5, 8, 30_000, 2);
+        this(5, 30_000, 2);
     }
 
-    public CircuitBreaker(int failureThreshold, int repeatThreshold,
-                          long cooldownMs, int halfOpenMaxAttempts) {
+    public CircuitBreaker(int failureThreshold, long cooldownMs, int halfOpenMaxAttempts) {
         this.failureThreshold = failureThreshold;
-        this.repeatThreshold = repeatThreshold;
         this.cooldownMs = cooldownMs;
         this.halfOpenMaxAttempts = halfOpenMaxAttempts;
     }
@@ -67,7 +59,6 @@ public class CircuitBreaker {
             case CLOSED:
                 return true;
             case OPEN:
-                // 检查冷却时间是否已过
                 if (System.currentTimeMillis() - lastOpenTime >= cooldownMs) {
                     state = State.HALF_OPEN;
                     halfOpenAttempts = 0;
@@ -89,14 +80,12 @@ public class CircuitBreaker {
         switch (state) {
             case CLOSED:
                 failureCount = 0;
-                consecutiveRepeatCount = 0;
                 break;
             case HALF_OPEN:
                 halfOpenAttempts++;
                 if (halfOpenAttempts >= halfOpenMaxAttempts) {
                     state = State.CLOSED;
                     failureCount = 0;
-                    consecutiveRepeatCount = 0;
                     log.info("熔断器: HALF_OPEN → CLOSED (测试成功)");
                 }
                 break;
@@ -115,32 +104,11 @@ public class CircuitBreaker {
                 }
                 break;
             case HALF_OPEN:
-                // 半开状态失败，立即熔断
                 trip("半开状态测试失败");
                 break;
         }
     }
 
-    /**
-     * 记录重复工具调用
-     */
-    public void recordRepeat() {
-        consecutiveRepeatCount++;
-        if (consecutiveRepeatCount >= repeatThreshold) {
-            trip("连续重复工具调用 " + consecutiveRepeatCount + " 次");
-        }
-    }
-
-    /**
-     * 重置重复计数器（当工具调用变化时）
-     */
-    public void resetRepeatCount() {
-        consecutiveRepeatCount = 0;
-    }
-
-    /**
-     * 触发熔断
-     */
     private void trip(String reason) {
         state = State.OPEN;
         lastOpenTime = System.currentTimeMillis();
@@ -153,7 +121,6 @@ public class CircuitBreaker {
     public void reset() {
         state = State.CLOSED;
         failureCount = 0;
-        consecutiveRepeatCount = 0;
         halfOpenAttempts = 0;
         log.info("熔断器手动重置");
     }
@@ -169,7 +136,7 @@ public class CircuitBreaker {
      * 获取统计信息
      */
     public String getStats() {
-        return String.format("State=%s, Failures=%d, Repeats=%d, HalfOpenAttempts=%d",
-            state, failureCount, consecutiveRepeatCount, halfOpenAttempts);
+        return String.format("State=%s, Failures=%d, HalfOpenAttempts=%d",
+            state, failureCount, halfOpenAttempts);
     }
 }
