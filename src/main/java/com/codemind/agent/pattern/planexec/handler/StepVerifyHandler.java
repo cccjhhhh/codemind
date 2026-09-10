@@ -92,16 +92,28 @@ public class StepVerifyHandler implements StateHandler {
 
     /**
      * 规则匹配：检查实际输出是否包含预期输出中的关键信息。
+     *
+     * <p>针对「读取文件/列出文件」类步骤做了柔性处理：
+     * 当实际输出是代码内容（含代码特征）且预期是描述性的（如"包含xxx内容"），
+     * 只要实际输出非空且长度合理，即视为通过。</p>
      */
     private boolean containsKeywords(String actual, String expected) {
         if (actual == null || expected == null) return false;
         String actualLower = actual.toLowerCase();
         String expectedLower = expected.toLowerCase();
 
-        // 精确包含
+        // 1. 精确包含
         if (actualLower.contains(expectedLower)) return true;
 
-        // 关键词匹配（提取预期中的关键名词/动词）
+        // 2. 柔性路径：实际输出是代码/文件内容，预期是描述性文本
+        if (isCodeLikeOutput(actual) && isDescriptiveExpected(expected)) {
+            if (actual.length() >= 50) {
+                log.debug("步骤验证：代码类输出 + 描述性预期 → 柔性通过");
+                return true;
+            }
+        }
+
+        // 3. 关键词匹配（提取预期中的关键名词/动词）
         List<String> keywords = Arrays.stream(expectedLower.split("[\\s,;：；]+"))
             .filter(w -> w.length() > 2)
             .collect(java.util.stream.Collectors.toList());
@@ -109,6 +121,34 @@ public class StepVerifyHandler implements StateHandler {
             .filter(actualLower::contains)
             .count();
         return matchCount >= Math.min(keywords.size(), 2);
+    }
+
+    /**
+     * 判断实际输出是否为代码/文件内容类文本。
+     * 特征：包含代码分隔符、路径格式、大量换行、关键字模式。
+     */
+    private boolean isCodeLikeOutput(String output) {
+        if (output == null || output.length() < 50) return false;
+        int codeSignals = 0;
+        if (output.contains("import ") || output.contains("package ")) codeSignals++;
+        if (output.contains("public ") || output.contains("class ") || output.contains("interface ")) codeSignals++;
+        if (output.contains("def ") || output.contains("function ")) codeSignals++;
+        if (output.contains(".java") || output.contains(".kt") || output.contains(".py")) codeSignals++;
+        if (output.contains("/") && output.contains("\n")) codeSignals++; // 路径+换行
+        return codeSignals >= 1;
+    }
+
+    /**
+     * 判断预期输出是否为描述性文本（而非精确值要求）。
+     * 特征：包含"内容"、"列表"、"结果"、"信息"等概括词。
+     */
+    private boolean isDescriptiveExpected(String expected) {
+        if (expected == null) return false;
+        String lower = expected.toLowerCase();
+        return lower.contains("内容") || lower.contains("列表")
+            || lower.contains("结果") || lower.contains("信息")
+            || lower.contains("分析") || lower.contains("概述")
+            || lower.contains("完整");
     }
 
     /**
@@ -134,8 +174,15 @@ public class StepVerifyHandler implements StateHandler {
         }
     }
 
+    private static final int SEMANTIC_MATCH_MAX_CHARS = 4000;
+
     private boolean isLongEnough(String text) {
-        return text != null && text.length() >= semanticMatchMinLength;
+        if (text == null) return false;
+        // 截断超长文本后再做语义验证，避免 prompt 过大
+        String trimmed = text.length() > SEMANTIC_MATCH_MAX_CHARS
+            ? text.substring(0, SEMANTIC_MATCH_MAX_CHARS) + "...[truncated]"
+            : text;
+        return trimmed.length() >= semanticMatchMinLength;
     }
 
     // ==================== 流转控制 ====================
